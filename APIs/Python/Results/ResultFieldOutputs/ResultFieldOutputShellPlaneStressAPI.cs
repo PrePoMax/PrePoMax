@@ -16,6 +16,9 @@ namespace APIs.Python
         // Properties
         [PythonAPI("The source tensor field name.", Returns = "str")]
         public string field_name { get { return ResolveShellPlaneStress().FieldName; } }
+        [PythonAPI("Stress for the stresses of a stress field in the ply axes, or Strain for the plane stresses the " +
+                   "elastic constants of the ply material give the in-plane strains of a strain field.", Returns = "str")]
+        public string stress_source { get { return ResolveShellPlaneStress().StressSource.ToString(); } }
 
 
         // Constructor
@@ -37,7 +40,8 @@ namespace APIs.Python
         {
             ResultFieldOutputShellPlaneStress fieldOutput = ResolveShellPlaneStress();
             return "FieldOutputShellPlaneStress(name=" + StringListAPI.ToDisplayString(_fieldOutputName) +
-                   ", field_name=" + StringListAPI.ToDisplayString(fieldOutput.FieldName) + ")";
+                   ", field_name=" + StringListAPI.ToDisplayString(fieldOutput.FieldName) +
+                   ", stress_source=" + StringListAPI.ToDisplayString(fieldOutput.StressSource.ToString()) + ")";
         }
     }
 }

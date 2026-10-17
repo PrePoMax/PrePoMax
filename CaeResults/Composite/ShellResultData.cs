@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.Serialization;
 using CaeGlobals;
 using CaeMesh;
 
@@ -23,6 +24,8 @@ namespace CaeResults
         // Variables
         private Dictionary<int, ShellResultElement> _elements;
         private Dictionary<string, PlyStrength> _plyStrengths;
+        [OptionalField]
+        private Dictionary<string, PlyStiffness> _plyStiffnesses;
         [NonSerialized] private FeMesh _nodeDataMesh;
         [NonSerialized] private Dictionary<int, ShellResultElement[]> _nodeData;
 
@@ -30,6 +33,15 @@ namespace CaeResults
         // Properties
         public Dictionary<int, ShellResultElement> Elements { get { return _elements; } }
         public Dictionary<string, PlyStrength> PlyStrengths { get { return _plyStrengths; } }
+        public Dictionary<string, PlyStiffness> PlyStiffnesses
+        {
+            get
+            {
+                if (_plyStiffnesses == null)
+                    _plyStiffnesses = new Dictionary<string, PlyStiffness>(StringComparer.OrdinalIgnoreCase);
+                return _plyStiffnesses;
+            }
+        }
 
 
         // Constructor

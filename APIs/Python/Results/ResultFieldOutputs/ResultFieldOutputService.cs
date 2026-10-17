@@ -109,20 +109,26 @@ namespace APIs.Python
             ValidateRequiredString(fieldName, "field_name");
             return new ResultFieldOutputMaterialAxesDraftAPI(name, fieldName);
         }
-        public ResultFieldOutputShellPlaneStressDraftAPI CreateFieldOutputShellPlaneStress(string name, string fieldName)
+        public ResultFieldOutputShellPlaneStressDraftAPI CreateFieldOutputShellPlaneStress(string name, string fieldName,
+                                                                                          string stressSource)
         {
             PythonNameComparer.ValidateFormat(name, "name", null);
             ValidateRequiredString(fieldName, "field_name");
-            return new ResultFieldOutputShellPlaneStressDraftAPI(name, fieldName);
+            ShellStressSourceEnum stressSourceValue =
+                PythonValueConverter.ToEnum<ShellStressSourceEnum>(stressSource, "stress_source");
+            return new ResultFieldOutputShellPlaneStressDraftAPI(name, fieldName, stressSourceValue);
         }
         public ResultFieldOutputCompositeFailureDraftAPI CreateFieldOutputCompositeFailure(string name, string fieldName,
-                                                                                          string criterion)
+                                                                                          string criterion,
+                                                                                          string stressSource)
         {
             PythonNameComparer.ValidateFormat(name, "name", null);
             ValidateRequiredString(fieldName, "field_name");
             CompositeFailureCriterionEnum criterionValue =
                 PythonValueConverter.ToEnum<CompositeFailureCriterionEnum>(criterion, "criterion");
-            return new ResultFieldOutputCompositeFailureDraftAPI(name, fieldName, criterionValue);
+            ShellStressSourceEnum stressSourceValue =
+                PythonValueConverter.ToEnum<ShellStressSourceEnum>(stressSource, "stress_source");
+            return new ResultFieldOutputCompositeFailureDraftAPI(name, fieldName, criterionValue, stressSourceValue);
         }
         public ResultFieldOutputAPI AddFieldOutput(string resultName, ResultFieldOutputDraftAPI output)
         {

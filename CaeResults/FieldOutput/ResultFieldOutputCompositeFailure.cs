@@ -8,6 +8,7 @@
 // Contributors:
 
 using System;
+using System.Runtime.Serialization;
 using DynamicTypeDescriptor;
 
 namespace CaeResults
@@ -34,13 +35,18 @@ namespace CaeResults
         public const string ComponentFailureIndex = "FAILURE_INDEX";
         public const string ComponentReserveFactor = "RESERVE_FACTOR";
         public const string ComponentMode = "MODE";
+        public const string ComponentMaxFailureIndex = "MAX_FAILURE_INDEX";
+        public const string ComponentCriticalLayer = "CRITICAL_LAYER";
         private string _fieldName;
         private CompositeFailureCriterionEnum _criterion;
+        [OptionalField]
+        private ShellStressSourceEnum _stressSource;
 
 
-        // Properties
+        // Properties                                                                                                               
         public string FieldName { get { return _fieldName; } set { _fieldName = value; } }
         public CompositeFailureCriterionEnum Criterion { get { return _criterion; } set { _criterion = value; } }
+        public ShellStressSourceEnum StressSource { get { return _stressSource; } set { _stressSource = value; } }
 
 
         // Constructor
@@ -59,7 +65,8 @@ namespace CaeResults
         }
         public override string[] GetComponentNames()
         {
-            return new string[] { ComponentFailureIndex, ComponentReserveFactor, ComponentMode };
+            return new string[] { ComponentFailureIndex, ComponentReserveFactor, ComponentMode, ComponentMaxFailureIndex,
+                                  ComponentCriticalLayer };
         }
     }
 }

@@ -14,6 +14,7 @@ import math
 
 PREFIX = "PyTest_"
 JOB = PREFIX + "Composite"
+INCLINED_ORIGIN = [0, 200, 0]
 STRENGTH = {"xt": 1500.0, "xc": 1200.0, "yt": 50.0, "yc": 250.0, "s12": 70.0, "s23": 40.0, "f12": -0.5}
 
 
@@ -45,30 +46,59 @@ def node_region(node_ids):
     return pmx.create.selection_by_ids('femodel', 'nodes', 'nodes', sorted(node_ids))
 
 
+def rotation():
+    """The axes of the inclined plate as columns: its plate is the flat one turned by them about INCLINED_ORIGIN."""
+    def rx(a):
+        c, s = math.cos(a), math.sin(a)
+        return [[1, 0, 0], [0, c, -s], [0, s, c]]
+
+    def rz(a):
+        c, s = math.cos(a), math.sin(a)
+        return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+    a, b = rz(math.radians(20)), rx(math.radians(35))
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def add_plate_supports(step, name, nodes, coordinate_system_name=None):
+    """Pulls a plate to a strain of 0.001 along its x axis with the lateral contraction left free."""
+    def bc(suffix, node_ids, **values):
+        step.bcs.add_displacement_rotation(PREFIX + name + suffix, node_region(node_ids),
+                                           coordinate_system_name=coordinate_system_name, **values)
+    bc("X0", [n for n, c in nodes.items() if abs(c[0]) < 1e-6], u1=0)
+    bc("Origin", [n for n, c in nodes.items() if abs(c[0]) + abs(c[1]) < 1e-6], u2=0)
+    bc("Plane", nodes.keys(), u3=0)
+    bc("X1", [n for n, c in nodes.items() if abs(c[0] - 100) < 1e-6], u1=0.1)
+
+
 def build_and_solve():
     pmx.model.materials.add(PREFIX + "Ply", [pmx.create.elastic_lamina([[140000, 10000, 0.3, 5000, 5000, 3333.333333, 0]]),
                                              pmx.create.composite_strength(STRENGTH["xt"], STRENGTH["xc"], STRENGTH["yt"],
                                                                            STRENGTH["yc"], STRENGTH["s12"],
                                                                            STRENGTH["s23"])])
     pmx.model.materials.add(PREFIX + "Iso", pmx.create.elastic(200000, 0.3))
-    pmx.model.sections.add_composite_shell(PREFIX + "Plate", pmx.create.region("ElementSetName", "PLATE"),
-                                           [[0.5, PREFIX + "Ply", 0], [0.5, PREFIX + "Ply", 90]], symmetric=True)
-    for name in ("INCLINED", "CYLINDER"):
-        pmx.model.sections.add_shell(PREFIX + name, PREFIX + "Iso", pmx.create.region("ElementSetName", name),
-                                     thickness=1)
+    layup = [[0.5, PREFIX + "Ply", 0], [0.5, PREFIX + "Ply", 90]]
+    pmx.model.sections.add_composite_shell(PREFIX + "Plate", pmx.create.region("ElementSetName", "PLATE"), layup,
+                                           symmetric=True)
+    # The inclined plate is the flat one turned in space, with its layers turned from its own axes
+    r = rotation()
+    pmx.model.coordinate_systems.add(PREFIX + "Inclined", INCLINED_ORIGIN,
+                                     [INCLINED_ORIGIN[i] + r[i][0] for i in range(3)],
+                                     [INCLINED_ORIGIN[i] + r[i][1] for i in range(3)])
+    pmx.model.material_orientations.add(PREFIX + "Inclined", pmx.create.region("ElementSetName", "INCLINED"),
+                                        coordinate_system_name=PREFIX + "Inclined")
+    pmx.model.sections.add_composite_shell(PREFIX + "Inclined", pmx.create.region("ElementSetName", "INCLINED"), layup,
+                                           symmetric=True)
+    pmx.model.sections.add_shell(PREFIX + "CYLINDER", PREFIX + "Iso", pmx.create.region("ElementSetName", "CYLINDER"),
+                                 thickness=1)
     step = pmx.model.steps.add_static(PREFIX + "Step")
     plate_part, plate = nodes_of("PLATE")
-    step.bcs.add_displacement_rotation(PREFIX + "X0", node_region([n for n, c in plate.items() if abs(c[0]) < 1e-6]),
-                                       u1=0)
-    step.bcs.add_displacement_rotation(PREFIX + "Origin",
-                                       node_region([n for n, c in plate.items() if abs(c[0]) + abs(c[1]) < 1e-6]),
-                                       u2=0)
-    step.bcs.add_displacement_rotation(PREFIX + "Plane", node_region(plate.keys()), u3=0)
-    step.bcs.add_displacement_rotation(PREFIX + "X1",
-                                       node_region([n for n, c in plate.items() if abs(c[0] - 100) < 1e-6]), u1=0.1)
-    for name in ("INCLINED", "CYLINDER"):
-        part, nodes = nodes_of(name)
-        step.bcs.add_fixed(PREFIX + "Fix_" + name, node_region(nodes.keys()))
+    add_plate_supports(step, "", plate)
+    inclined_part, inclined = nodes_of("INCLINED")
+    local = {n: [sum(r[k][j] * (c[k] - INCLINED_ORIGIN[k]) for k in range(3)) for j in range(3)]
+             for n, c in inclined.items()}
+    add_plate_supports(step, "Inclined_", local, PREFIX + "Inclined")
+    part, nodes = nodes_of("CYLINDER")
+    step.bcs.add_fixed(PREFIX + "Fix_CYLINDER", node_region(nodes.keys()))
     pmx.jobs.add(JOB)
     status = pmx.jobs[JOB].run(timeout=300)
     check(status == "OK", "the analysis did not succeed, got " + status + "\n" + pmx.jobs[JOB].get_output())
@@ -76,10 +106,10 @@ def build_and_solve():
     return pmx.results.current
 
 
-def layer_nodes(result, layer):
+def layer_nodes(result, layer, section="Plate"):
     elements = result.mesh.elements.get_data()
     node_ids = set()
-    for element_id in result.mesh.element_sets[PREFIX + "Plate_LAYER-" + str(layer)].get_element_ids():
+    for element_id in result.mesh.element_sets[PREFIX + section + "_LAYER-" + str(layer)].get_element_ids():
         node_ids.update(elements.get_node_ids(element_id))
     return sorted(node_ids)
 
@@ -97,6 +127,47 @@ def tsai_wu(s1, s2, t12):
     a = f11 * s1 * s1 + f22 * s2 * s2 + f66 * t12 * t12 + 2 * f12 * s1 * s2
     b = f1 * s1 + f2 * s2
     return a + b, (-b + math.sqrt(b * b + 4 * a)) / (2 * a)
+
+
+def lamination_theory_plies():
+    """The ply stresses of the [0/90]s plate at a strain of 0.001 along x and no force along y, in the ply axes."""
+    e1, e2, v12 = 140000.0, 10000.0, 0.3
+    denominator = 1 - v12 * v12 * e2 / e1
+    q11, q22, q12 = e1 / denominator, e2 / denominator, v12 * e2 / denominator
+    ex = 0.001
+    ey = -2 * q12 / (q11 + q22) * ex
+    return {0: (q11 * ex + q12 * ey, q12 * ex + q22 * ey), 90: (q11 * ey + q12 * ex, q12 * ey + q22 * ex)}
+
+
+def check_plane_stress_from_strains(result, step_id, increment_id, layers):
+    outputs = result.field_outputs
+    fields = result.steps[step_id].increments[increment_id].fields
+    check("TOSTRAIN" in list(fields.get_names()), "the result must hold the strains: " + str(list(fields.get_names())))
+    plane = outputs.add_shell_plane_stress(PREFIX + "PLANE_E", "TOSTRAIN", stress_source="Strain")
+    check(plane.stress_source == "Strain" and outputs[PREFIX + "PLANE"].stress_source == "Stress",
+          "the stress source did not read back")
+    outputs.add_composite_failure(PREFIX + "TW_E", "TOSTRAIN", "TsaiWu", stress_source="strain")
+    check(fields[PREFIX + "PLANE_E"].components["S11"].get_data().unit ==
+          fields["STRESS"].components["S11"].get_data().unit, "plane stresses from strains must be stresses")
+    # The plane stresses from the strains are classical lamination theory, within 0.5 % of the largest stress of a ply:
+    # the small stress the lateral contraction alone gives follows the edges of the plate, not the ideal laminate
+    expected = lamination_theory_plies()
+    for k, angle in ((1, 0), (2, 90), (3, 90), (4, 0)):
+        s11, s22 = expected[angle]
+        tolerance = 0.005 * max(abs(s11), abs(s22))
+        m11 = mean(result, step_id, increment_id, PREFIX + "PLANE_E", "S11", layers[k])
+        m22 = mean(result, step_id, increment_id, PREFIX + "PLANE_E", "S22", layers[k])
+        check(abs(m11 - s11) <= tolerance and abs(m22 - s22) <= tolerance,
+              "layer %d reads %.3f and %.3f from the strains, not %.3f and %.3f of lamination theory" %
+              (k, m11, m22, s11, s22))
+    node = layers[2][0]
+    s11, s22, s12 = [result.get_nodal_value(step_id, increment_id, PREFIX + "PLANE_E", c, node)
+                     for c in ("S11", "S22", "S12")]
+    index = tsai_wu(s11, s22, s12)[0]
+    check(abs(result.get_nodal_value(step_id, increment_id, PREFIX + "TW_E", "FAILURE_INDEX", node) - index) < 1e-4,
+          "the Tsai-Wu index from the strains does not follow the formula")
+    message = raised_message(lambda: outputs.add_shell_plane_stress(PREFIX + "Bad", "TOSTRAIN", stress_source="Bad"))
+    check(message is not None and "'stress_source'" in message, "a bad stress source must be refused: " + str(message))
 
 
 def main():
@@ -130,9 +201,12 @@ def main():
         check(name in result.mesh.parts and set(result.mesh.parts[name].get_element_ids()) ==
               set(result.mesh.element_sets[PREFIX + "Plate_LAYER-" + str(k + 1)].get_element_ids()),
               "the layer %d must be the result part %s: %s" % (k + 1, name, list(result.mesh.parts.get_names())))
-    groups = [entry for entry in pmx.model.tree.get_layout("results", "parts") if isinstance(entry, dict)]
-    check([group["group_name"] for group in groups] == [plate_part.name] and list(groups[0]["items"]) ==
-          layer_part_names, "the layers must be gathered in the group %s: %s" % (plate_part.name, groups))
+    groups = {entry["group_name"]: list(entry["items"]) for entry in pmx.model.tree.get_layout("results", "parts")
+              if isinstance(entry, dict)}
+    inclined_part, inclined = nodes_of("INCLINED")
+    check(groups.get(plate_part.name) == layer_part_names and
+          groups.get(inclined_part.name) == [inclined_part.name + "_Layer-" + str(k) for k in (1, 2, 3, 4)],
+          "the layers of each plate must be gathered in a group named after it: %s" % groups)
     # The plies in the material axes, as Phase 0 found them
     layers = {k: layer_nodes(result, k) for k in (1, 2, 3, 4)}
     check(all(len(nodes) > 0 for nodes in layers.values()), "every layer must have its own result element set")
@@ -172,6 +246,17 @@ def main():
     check(result.get_nodal_value(step_id, increment_id, PREFIX + "MS", "MODE", node) == 3 and
           abs(result.get_nodal_value(step_id, increment_id, PREFIX + "MS", "FAILURE_INDEX", node) - s22 / STRENGTH["yt"]) <
           1e-4, "the maximum stress of a 90 degree ply must be matrix tension, S22 / Yt")
+    # The largest index over the layers of a shell element is shown on every layer: the 90 degree plies govern here
+    def value(field, component, n):
+        return result.get_nodal_value(step_id, increment_id, field, component, n)
+    plate_max = max(value(PREFIX + "MS", "FAILURE_INDEX", n) for k in (1, 2, 3, 4) for n in layers[k])
+    layer_max = []
+    for n in layers[1]:
+        layer_max.append(value(PREFIX + "MS", "MAX_FAILURE_INDEX", n))
+        check(layer_max[-1] >= value(PREFIX + "MS", "FAILURE_INDEX", n) - 1e-6 and
+              value(PREFIX + "MS", "CRITICAL_LAYER", n) in (2, 3),
+              "the largest index over the layers at node %d must come from a 90 degree ply" % n)
+    check(abs(max(layer_max) - plate_max) < 1e-6, "the largest index over the layers must be the largest of the plate")
     # A ply without a composite strength reads NaN
     cylinder_part, cylinder = nodes_of("CYLINDER")
     elements = result.mesh.elements.get_data()
@@ -188,6 +273,45 @@ def main():
     # The fixed cylinder has no in-plane stress and so no principal direction
     angle = result.get_nodal_value(step_id, increment_id, PREFIX + "PLANE", "ANGLE", sorted(nodes)[0])
     check(angle != angle, "a node without in-plane stress must have no principal angle, got " + str(angle))
+    check_plane_stress_from_strains(result, step_id, increment_id, layers)
+    # The inclined plate is turned in space and its layers from its own axes. Its global stresses rotated by hand into
+    # the ply axes give its stresses in the material axes exactly
+    r = rotation()
+    for k, angle in ((1, 0), (2, 90)):
+        c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+        axis1 = [c * r[i][0] + s * r[i][1] for i in range(3)]
+        axis2 = [-s * r[i][0] + c * r[i][1] for i in range(3)]
+        for node in layer_nodes(result, k, "Inclined")[:5]:
+            sxx, syy, szz, sxy, syz, szx = [result.get_nodal_value(step_id, increment_id, "STRESS", component, node)
+                                            for component in ("S11", "S22", "S33", "S12", "S23", "S13")]
+            tensor = [[sxx, sxy, szx], [sxy, syy, syz], [szx, syz, szz]]
+            for component, axis in (("S11", axis1), ("S22", axis2)):
+                by_hand = sum(axis[i] * tensor[i][j] * axis[j] for i in range(3) for j in range(3))
+                read = result.get_nodal_value(step_id, increment_id, PREFIX + "PLY", component, node)
+                check(abs(read - by_hand) <= 1e-3 * max(1.0, abs(by_hand)),
+                      "the inclined layer %d reads %s %.4f at node %d, not %.4f" % (k, component, read, node, by_hand))
+    # And it gives the plies of the flat plate as closely as CalculiX solves the turned plate: its strains differ from
+    # those of the flat plate by up to 2 % in the 90 degree plies
+    for k in (1, 2, 3, 4):
+        inclined_layer = layer_nodes(result, k, "Inclined")
+        scale = max(abs(mean(result, step_id, increment_id, PREFIX + "PLY", c, layers[k])) for c in ("S11", "S22"))
+        for component in ("S11", "S22"):
+            flat = mean(result, step_id, increment_id, PREFIX + "PLY", component, layers[k])
+            turned = mean(result, step_id, increment_id, PREFIX + "PLY", component, inclined_layer)
+            check(abs(turned - flat) <= 0.025 * scale, "layer %d of the inclined plate reads %s %.3f, the flat one %.3f"
+                  % (k, component, turned, flat))
+    # The components with a direction in the material axes are drawn as a tensor plot
+    pmx.view.current = "results"
+    for field, component, plottable in ((PREFIX + "PLY", "S11", True), (PREFIX + "PLY", "PRINCIPAL_MAX", True),
+                                        (PREFIX + "PLANE", "S11", True), (PREFIX + "PLANE", "S22", True),
+                                        (PREFIX + "PLANE", "PRINCIPAL_MAX", True),
+                                        (PREFIX + "PLANE", "PRINCIPAL_MIN", True), (PREFIX + "PLANE", "ANGLE", False),
+                                        (PREFIX + "MS", "FAILURE_INDEX", False)):
+        pmx.view.set_result_field(field, component)
+        message = raised_message(lambda: setattr(pmx.view, "result_type", "TensorPlot"))
+        check((message is None) == plottable, "%s.%s must %sbe a tensor plot: %s" %
+              (field, component, "" if plottable else "not ", message))
+        pmx.view.result_type = "ColorContours"
     # Refusals name the argument
     message = raised_message(lambda: outputs.add_composite_failure(PREFIX + "Bad", "STRESS", "Puck"))
     check(message is not None and "'criterion'" in message, "an unknown criterion must be refused: " + str(message))

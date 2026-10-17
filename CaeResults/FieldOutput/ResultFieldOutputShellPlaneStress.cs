@@ -8,6 +8,7 @@
 // Contributors:
 
 using System;
+using System.Runtime.Serialization;
 
 namespace CaeResults
 {
@@ -25,10 +26,13 @@ namespace CaeResults
         public const string ComponentShearMax = "SHEAR_MAX";
         public const string ComponentAngle = "ANGLE";
         private string _fieldName;
+        [OptionalField]
+        private ShellStressSourceEnum _stressSource;
 
 
-        // Properties
+        // Properties                                                                                                               
         public string FieldName { get { return _fieldName; } set { _fieldName = value; } }
+        public ShellStressSourceEnum StressSource { get { return _stressSource; } set { _stressSource = value; } }
 
 
         // Constructor

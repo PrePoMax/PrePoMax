@@ -35,8 +35,8 @@ namespace PrePoMax
         //
         [CategoryAttribute("Data")]
         [OrderedDisplayName(1, 10, "Field name")]
-        [DescriptionAttribute("Stress field whose in-plane components in the material axes are evaluated by the " +
-                              "failure criterion.")]
+        [DescriptionAttribute("Stress or strain field whose in-plane components in the material axes give the " +
+                              "stresses the failure criterion evaluates.")]
         [Id(2, 1)]
         public string FieldName { get { return ResultFieldOutput.FieldName; } set { ResultFieldOutput.FieldName = value; } }
         //
@@ -49,6 +49,18 @@ namespace PrePoMax
         {
             get { return ResultFieldOutput.Criterion; }
             set { ResultFieldOutput.Criterion = value; }
+        }
+        //
+        [CategoryAttribute("Data")]
+        [OrderedDisplayName(3, 10, "Stress from")]
+        [DescriptionAttribute("The in-plane stresses of the plies: the stresses of a stress field in the ply axes, or the " +
+                              "plane stresses the elastic constants of the ply material give the in-plane " +
+                              "strains of a strain field, as classical lamination theory computes them.")]
+        [Id(4, 1)]
+        public ShellStressSourceEnum StressSource
+        {
+            get { return ResultFieldOutput.StressSource; }
+            set { ResultFieldOutput.StressSource = value; }
         }
 
 

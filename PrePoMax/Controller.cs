@@ -1766,8 +1766,11 @@ namespace PrePoMax
             Dictionary<int, MaterialOrientation> elementOrientations = _model.GetElementMaterialOrientations();
             //
             ShellResultData data = new ShellResultData();
+            PlyStiffness stiffness;
             foreach (var entry in _model.Materials)
             {
+                if (TryGetPlyStiffness(entry.Value, out stiffness)) data.PlyStiffnesses[entry.Key] = stiffness;
+                //
                 CompositeStrength strength = entry.Value.GetProperty<CompositeStrength>() as CompositeStrength;
                 if (strength == null) continue;
                 //
@@ -1852,6 +1855,50 @@ namespace PrePoMax
             }
             GroupCompositeLayerResultParts(resultMesh, data);
             return data;
+        }
+        // The in-plane elastic constants of the first temperature of the elastic property of a material
+        private bool TryGetPlyStiffness(Material material, out PlyStiffness stiffness)
+        {
+            stiffness = null;
+            try
+            {
+                foreach (MaterialProperty property in material.Properties)
+                {
+                    if (property is ElasticLamina ela)
+                    {
+                        EquationContainer[] row = ela.LaminaConstantsTemp[0];
+                        stiffness = new PlyStiffness(row[ElasticLamina.YoungsModulus1Id].Value,
+                                                     row[ElasticLamina.YoungsModulus2Id].Value,
+                                                     row[ElasticLamina.PoissonsRatio12Id].Value,
+                                                     row[ElasticLamina.ShearModulus12Id].Value);
+                    }
+                    else if (property is ElasticEngineeringConstants eec)
+                    {
+                        EquationContainer[] row = eec.EngineeringConstantsTemp[0];
+                        stiffness = new PlyStiffness(row[ElasticEngineeringConstants.YoungsModulus1Id].Value,
+                                                     row[ElasticEngineeringConstants.YoungsModulus2Id].Value,
+                                                     row[ElasticEngineeringConstants.PoissonsRatio12Id].Value,
+                                                     row[ElasticEngineeringConstants.ShearModulus12Id].Value);
+                    }
+                    else if (property is Elastic el)
+                    {
+                        double youngsModulus = el.YoungsPoissonsTemp[0][0].Value;
+                        double poissonsRatio = el.YoungsPoissonsTemp[0][1].Value;
+                        stiffness = new PlyStiffness(youngsModulus, youngsModulus, poissonsRatio,
+                                                     youngsModulus / (2 * (1 + poissonsRatio)));
+                    }
+                    else if (property is ElasticWithDensity ewd)
+                    {
+                        double youngsModulus = ewd.YoungsModulus.Value;
+                        double poissonsRatio = ewd.PoissonsRatio.Value;
+                        stiffness = new PlyStiffness(youngsModulus, youngsModulus, poissonsRatio,
+                                                     youngsModulus / (2 * (1 + poissonsRatio)));
+                    }
+                    if (stiffness != null) return true;
+                }
+            }
+            catch { stiffness = null; }
+            return false;
         }
         // The layers of a composite shell have their own nodes, so each one is a result part of its own. A result part
         // that is one layer of one model part is named after the model part and the layer, and the layers of a model
@@ -31410,11 +31457,9 @@ namespace PrePoMax
         }
         private void DrawTensorPlot(FieldData fieldData)
         {
+            // A shell plane stress is no tensor field but has the directions of its components in the material axes
             Field field = _allResults.CurrentResult.GetField(fieldData);
-            DataTypeEnum dataType = field != null ? field.DataType :
-                                    _allResults.CurrentResult.GetFieldDataType(fieldData.Name);
-            if (dataType != DataTypeEnum.Tensor ||
-                !_allResults.CurrentResult.IsTensorPlotComponent(fieldData)) return;
+            if (!_allResults.CurrentResult.IsTensorPlotComponent(fieldData)) return;
             if (field != null && field.Complex)
             {
                 ComplexResultTypeEnum complexType = _form.GetComplexResultType();

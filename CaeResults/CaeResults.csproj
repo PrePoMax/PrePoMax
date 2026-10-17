@@ -71,9 +71,11 @@
     <Compile Include="FieldOutput\ResultFieldOutputCoordinateSystemTransform.cs" />
     <Compile Include="FieldOutput\ResultFieldOutputMaterialAxes.cs" />
     <Compile Include="FieldOutput\ResultFieldOutputShellPlaneStress.cs" />
+    <Compile Include="FieldOutput\ShellStressSourceEnum.cs" />
     <Compile Include="FieldOutput\ResultFieldOutputCompositeFailure.cs" />
     <Compile Include="Composite\ShellResultData.cs" />
     <Compile Include="Composite\ShellResultElement.cs" />
+    <Compile Include="Composite\PlyStiffness.cs" />
     <Compile Include="Composite\PlyStrength.cs" />
     <Compile Include="Composite\CompositeFailureCalculator.cs" />
     <Compile Include="FieldOutput\ResultFieldOutputEnvelope.cs" />

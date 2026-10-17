@@ -35,11 +35,22 @@ namespace PrePoMax
         //
         [CategoryAttribute("Data")]
         [OrderedDisplayName(1, 10, "Field name")]
-        [DescriptionAttribute("Stress field whose in-plane components in the material axes give the principal " +
-                              "values of the plane stress of the shell elements and of the layers of the composite " +
-                              "shells.")]
+        [DescriptionAttribute("Stress or strain field whose in-plane components in the material axes give the " +
+                              "plane stress of the shell elements and of the layers of the composite shells.")]
         [Id(2, 1)]
         public string FieldName { get { return ResultFieldOutput.FieldName; } set { ResultFieldOutput.FieldName = value; } }
+        //
+        [CategoryAttribute("Data")]
+        [OrderedDisplayName(2, 10, "Stress from")]
+        [DescriptionAttribute("The in-plane stresses of the plies: the stresses of a stress field in the ply axes, or the " +
+                              "plane stresses the elastic constants of the ply material give the in-plane " +
+                              "strains of a strain field, as classical lamination theory computes them.")]
+        [Id(3, 1)]
+        public ShellStressSourceEnum StressSource
+        {
+            get { return ResultFieldOutput.StressSource; }
+            set { ResultFieldOutput.StressSource = value; }
+        }
 
 
         // Constructors                                                                                                             
