@@ -34,6 +34,7 @@ namespace PrePoMax.Forms
         private const string _layerColumnName = "LayerName";
         private const double _layupHatchSpacing = 8;
         private const int _layupArrowWidth = 28;
+        private const int _layupArrowLength = 30;
 
 
         // Properties                                                                                                               
@@ -738,25 +739,16 @@ namespace PrePoMax.Forms
         }
         // The layers from layer 1 at the bottom, on the negative side of the normal (axis 3), to the top, each as high as
         // it is thick, as a cross section hatched at 45 degrees, at -45 degrees and at both in turn, with the layer of
-        // the selected row outlined
+        // the selected row outlined, and the reference surface the offset moves the layers from, where axis 3 starts
         private void DrawLayup(Graphics graphics, CompositeShellSection section)
         {
             Rectangle stack;
-            Rectangle[] bars = GetLayupBars(section, out stack);
+            int referenceY;
+            Rectangle[] bars = GetLayupBars(section, out stack, out referenceY);
             if (bars == null) return;
             //
             int numOfRows = section.Layers.Count;
             int selectedRow = dgvData.CurrentRow != null ? dgvData.CurrentRow.Index : -1;
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            // Axis 3 of the material axes points to the top
-            using (Pen arrowPen = new Pen(Color.Black, 1.5f))
-            {
-                arrowPen.CustomEndCap = new System.Drawing.Drawing2D.AdjustableArrowCap(4, 5);
-                int x = stack.Left - _layupArrowWidth + 4;
-                graphics.DrawLine(arrowPen, x, stack.Bottom, x, stack.Top);
-                TextRenderer.DrawText(graphics, "3", Font, new Point(x + 4, stack.Top - 2), Color.Black);
-            }
-            //
             double hatchPhase = 0;
             double[] risingPhases = Enumerable.Repeat(double.NaN, bars.Length).ToArray();
             double[] fallingPhases = Enumerable.Repeat(double.NaN, bars.Length).ToArray();
@@ -790,13 +782,43 @@ namespace PrePoMax.Forms
                     continue;
                 using (Pen pen = new Pen(SystemColors.Highlight, 3)) graphics.DrawRectangle(pen, bars[i]);
             }
+            int arrowX = stack.Left - _layupArrowWidth + 4;
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using (Pen linePen = new Pen(Color.Black, 1.5f))
+            {
+                linePen.DashStyle = System.Drawing.Drawing2D.DashStyle.DashDot;
+                graphics.DrawLine(linePen, arrowX - 6, referenceY, stack.Right + 8, referenceY);
+            }
+            // Axis 3 of the material axes starts on the reference surface and points to the top
+            int arrowTipY = referenceY - _layupArrowLength;
+            using (Pen arrowPen = new Pen(Color.Black, 1.5f))
+            {
+                arrowPen.CustomEndCap = new System.Drawing.Drawing2D.AdjustableArrowCap(4, 5);
+                graphics.DrawLine(arrowPen, arrowX, referenceY, arrowX, arrowTipY);
+            }
+            TextRenderer.DrawText(graphics, "3", Font, new Point(arrowX + 4, arrowTipY - 2), Color.Black);
         }
-        // The bar of every solver layer, from layer 1 at the bottom, empty for a layer too thin to be drawn
-        private Rectangle[] GetLayupBars(CompositeShellSection section, out Rectangle stack)
+        // The bar of every solver layer, from layer 1 at the bottom, empty for a layer too thin to be drawn. The layers
+        // and the reference surface they are offset from are drawn to scale, with room for axis 3 above the surface: an
+        // offset of 0.5 puts the surface on top of the layers, -0.5 below them, and a larger one away from them
+        private Rectangle[] GetLayupBars(CompositeShellSection section, out Rectangle stack, out int referenceY)
         {
             Rectangle area = pnlLayup.ClientRectangle;
             area.Inflate(-16, -12);
-            stack = new Rectangle(area.Left + _layupArrowWidth, area.Top, area.Width - _layupArrowWidth, area.Height);
+            double offset;
+            try { offset = section.Offset.Value; }
+            catch { offset = 0; }
+            if (double.IsNaN(offset) || double.IsInfinity(offset)) offset = 0;
+            double reference = 0.5 + offset;
+            double low = Math.Min(0, reference);
+            double high = Math.Max(1, reference);
+            double scale = area.Height / (high - low);
+            if (reference > low) scale = Math.Min(scale, (area.Height - _layupArrowLength) / (reference - low));
+            int stackTop = (int)Math.Round(area.Bottom - (1 - low) * scale);
+            int stackBottom = (int)Math.Round(area.Bottom - (0 - low) * scale);
+            referenceY = (int)Math.Round(area.Bottom - (reference - low) * scale);
+            stack = new Rectangle(area.Left + _layupArrowWidth, stackTop, area.Width - _layupArrowWidth,
+                                  stackBottom - stackTop);
             List<CompositeLayer> layers = section.GetSolverLayers();
             if (layers.Count == 0 || stack.Width <= 0 || stack.Height <= 0) return null;
             //
@@ -834,7 +856,8 @@ namespace PrePoMax.Forms
             if (section == null) return -1;
             //
             Rectangle stack;
-            Rectangle[] bars = GetLayupBars(section, out stack);
+            int referenceY;
+            Rectangle[] bars = GetLayupBars(section, out stack, out referenceY);
             if (bars == null) return -1;
             //
             for (int i = 0; i < bars.Length; i++)
