@@ -72,6 +72,7 @@ namespace PrePoMax
             SetBase(_compositeShellSection);
             // Each layer has its own material
             base.DynamicCustomTypeDescriptor.GetProperty(nameof(MaterialName)).SetIsBrowsable(false);
+            base.DynamicCustomTypeDescriptor.RenameBooleanPropertyToYesNo(nameof(Symmetric));
         }
 
 
