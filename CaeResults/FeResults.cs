@@ -643,6 +643,11 @@ namespace CaeResults
                         {
                             valid &= HasShellResultData();
                             valid &= IsShellSourceField(resultFieldOutput.GetParentNames()[0]);
+                            if (resultFieldOutput is ResultFieldOutputShellPlaneStress rfosps)
+                                valid &= IsShellQuantityValid(rfosps.FieldName, rfosps.Quantity);
+                            else if (resultFieldOutput is ResultFieldOutputCompositeFailure rfocf)
+                                valid &= rfocf.Quantity != ShellInPlaneQuantityEnum.Strain &&
+                                         IsShellQuantityValid(rfocf.FieldName, rfocf.Quantity);
                         }
                         else throw new NotSupportedException();
                     }
@@ -2108,7 +2113,7 @@ namespace CaeResults
                                 unitAbbreviation = StringAngleDegConverter.GetUnitAbbreviation();
                             }
                             else if (rfo4 is ResultFieldOutputShellPlaneStress rfosps &&
-                                     rfosps.StressSource == ShellStressSourceEnum.Strain)
+                                     rfosps.Quantity == ShellInPlaneQuantityEnum.PlaneStressFromStrain)
                             {
                                 unitConverter = new StringPressureConverter();
                                 unitAbbreviation = _unitSystem.PressureUnitAbbreviation;
@@ -2791,6 +2796,19 @@ namespace CaeResults
                  resultFieldOutput is ResultFieldOutputShellPlaneStress)) return false;
             return true;
         }
+        // A strain field has no unit, which a stress field has
+        public bool IsStrainField(string fieldName)
+        {
+            string[] componentNames = GetFieldComponentNames(fieldName);
+            if (componentNames == null || componentNames.Length == 0) return false;
+            return GetFieldUnitAbbreviation(fieldName, componentNames[0], 1, 1) == "/";
+        }
+        // The stresses as solved need a stress field, and the plane stresses from the strains and the strains a strain
+        // field, or the stiffness of the plies would turn stresses into stresses
+        public bool IsShellQuantityValid(string fieldName, ShellInPlaneQuantityEnum quantity)
+        {
+            return IsStrainField(fieldName) == (quantity != ShellInPlaneQuantityEnum.Stress);
+        }
         public bool DoesFieldContainsAllNecessaryComponents(string fieldName)
         {
             foreach (var entry in _fields)
@@ -3337,9 +3355,9 @@ namespace CaeResults
             if (fieldData == null) return false;
             //
             if (_resultFieldOutputs.TryGetValue(fieldData.Name, out ResultFieldOutput resultFieldOutput) &&
-                resultFieldOutput is ResultFieldOutputShellPlaneStress)
+                resultFieldOutput is ResultFieldOutputShellPlaneStress rfosps)
                 return HasShellResultData() && GetFieldForPlot(fieldData) != null &&
-                       IsShellPlaneStressPlotComponent(fieldData.Component);
+                       IsShellPlaneStressPlotComponent(rfosps, fieldData.Component);
             //
             Field field = GetFieldForPlot(fieldData);
             if (field == null || field.DataType != DataTypeEnum.Tensor ||
@@ -3488,10 +3506,12 @@ namespace CaeResults
             }
             return true;
         }
-        private static bool IsShellPlaneStressPlotComponent(string componentName)
+        // The first two components lie along material axes 1 and 2
+        private static bool IsShellPlaneStressPlotComponent(ResultFieldOutputShellPlaneStress resultFieldOutput,
+                                                            string componentName)
         {
-            return componentName == ResultFieldOutputShellPlaneStress.ComponentS11 ||
-                   componentName == ResultFieldOutputShellPlaneStress.ComponentS22 ||
+            string[] componentNames = resultFieldOutput.GetComponentNames();
+            return componentName == componentNames[0] || componentName == componentNames[1] ||
                    componentName == ResultFieldOutputShellPlaneStress.ComponentPrincipalMax ||
                    componentName == ResultFieldOutputShellPlaneStress.ComponentPrincipalMin;
         }
@@ -3518,6 +3538,7 @@ namespace CaeResults
                 if (angles == null) return false;
             }
             Dictionary<int, ShellResultElement[]> nodeElements = _shellResultData.GetNodeElements(_mesh);
+            string[] componentNames = _resultFieldOutputs[fieldData.Name].GetComponentNames();
             ShellResultElement[] elements;
             double angle;
             double l1;
@@ -3527,12 +3548,12 @@ namespace CaeResults
                 if (float.IsNaN(values[i]) || float.IsInfinity(values[i]) ||
                     !nodeElements.TryGetValue(globalNodeIds[i], out elements)) continue;
                 //
-                if (fieldData.Component == ResultFieldOutputShellPlaneStress.ComponentS11)
+                if (fieldData.Component == componentNames[0])
                 {
                     l1 = 1;
                     l2 = 0;
                 }
-                else if (fieldData.Component == ResultFieldOutputShellPlaneStress.ComponentS22)
+                else if (fieldData.Component == componentNames[1])
                 {
                     l1 = 0;
                     l2 = 1;
@@ -4793,7 +4814,7 @@ namespace CaeResults
         private float[][] ComputeFieldFromResultFieldOutputShellPlaneStress(ResultFieldOutputShellPlaneStress resultFieldOutput,
                                                                              Field sourceField)
         {
-            float[][] axes = GetPlyPlaneStresses(sourceField, resultFieldOutput.StressSource);
+            float[][] axes = GetPlyInPlaneValues(sourceField, resultFieldOutput.Quantity);
             if (axes == null) return null;
             //
             double shearTolerance = 1E-3;
@@ -4841,13 +4862,14 @@ namespace CaeResults
             return values;
         }
         // The criterion at the nodes of the plies whose material has ply strengths; any other node gets NaN
-        // The in-plane stresses in the ply axes at the indices 0, 1 and 3, as the components of a tensor in the material
-        // axes: the stresses of a stress field, or the plane stresses the elastic constants of the material of the ply
-        // give the in-plane strains of a strain field, NaN where the material has none
-        private float[][] GetPlyPlaneStresses(Field sourceField, ShellStressSourceEnum stressSource)
+        // The in-plane values in the ply axes at the indices 0, 1 and 3, as the components of a tensor in the material
+        // axes: the stresses of a stress field, the plane stresses the elastic constants of the material of the ply give
+        // the in-plane strains of a strain field, NaN where the material has none, or the strains of a strain field;
+        // a field of the other kind gives NaN
+        private float[][] GetPlyInPlaneValues(Field sourceField, ShellInPlaneQuantityEnum quantity)
         {
             float[][] axes = ComputeFieldInMaterialAxes(sourceField, false);
-            if (axes == null || stressSource == ShellStressSourceEnum.Stress) return axes;
+            if (axes == null) return null;
             //
             int count = axes[0].Length;
             float[][] stresses = new float[6][];
@@ -4856,6 +4878,8 @@ namespace CaeResults
                 stresses[i] = new float[count];
                 for (int j = 0; j < count; j++) stresses[i][j] = float.NaN;
             }
+            if (!IsShellQuantityValid(sourceField.Name, quantity)) return stresses;
+            if (quantity != ShellInPlaneQuantityEnum.PlaneStressFromStrain) return axes;
             int resultNodeId;
             double s11;
             double s22;
@@ -4883,7 +4907,7 @@ namespace CaeResults
         private float[][] ComputeFieldFromResultFieldOutputCompositeFailure(ResultFieldOutputCompositeFailure resultFieldOutput,
                                                                              Field sourceField)
         {
-            float[][] axes = GetPlyPlaneStresses(sourceField, resultFieldOutput.StressSource);
+            float[][] axes = GetPlyInPlaneValues(sourceField, resultFieldOutput.Quantity);
             if (axes == null) return null;
             //
             int count = axes[0].Length;
@@ -4893,6 +4917,8 @@ namespace CaeResults
                 values[i] = new float[count];
                 for (int j = 0; j < count; j++) values[i][j] = float.NaN;
             }
+            // A failure criterion evaluates stresses, not strains
+            if (resultFieldOutput.Quantity == ShellInPlaneQuantityEnum.Strain) return values;
             int resultNodeId;
             int mode;
             double failureIndex;

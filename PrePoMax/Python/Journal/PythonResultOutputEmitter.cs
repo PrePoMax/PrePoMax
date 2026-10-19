@@ -67,18 +67,18 @@ namespace PrePoMax.Python.Journal
             }
             else if (output is ResultFieldOutputShellPlaneStress shellPlaneStress)
             {
-                method = verb + "_shell_plane_stress";
+                method = verb + "_shell_in_plane_state";
                 arguments.Add(PythonValueFormatter.Text(shellPlaneStress.FieldName));
-                if (shellPlaneStress.StressSource != ShellStressSourceEnum.Stress)
-                    arguments.Add("stress_source=" + PythonValueFormatter.Text(shellPlaneStress.StressSource.ToString()));
+                if (shellPlaneStress.Quantity != ShellInPlaneQuantityEnum.Stress)
+                    arguments.Add("quantity=" + PythonValueFormatter.Text(shellPlaneStress.Quantity.ToString()));
             }
             else if (output is ResultFieldOutputCompositeFailure compositeFailure)
             {
                 method = verb + "_composite_failure";
                 arguments.Add(PythonValueFormatter.Text(compositeFailure.FieldName));
                 arguments.Add(PythonValueFormatter.Text(compositeFailure.Criterion.ToString()));
-                if (compositeFailure.StressSource != ShellStressSourceEnum.Stress)
-                    arguments.Add("stress_source=" + PythonValueFormatter.Text(compositeFailure.StressSource.ToString()));
+                if (compositeFailure.Quantity != ShellInPlaneQuantityEnum.Stress)
+                    arguments.Add("quantity=" + PythonValueFormatter.Text(compositeFailure.Quantity.ToString()));
             }
             else throw new NotSupportedException("the result field output type " + output.GetType().Name +
                                                  " has no API form");

@@ -23,7 +23,7 @@ namespace APIs.Python
             { typeof(ResultFieldOutputEquation), "equation" },
             { typeof(ResultFieldOutputCoordinateSystemTransform), "coordinate_system_transform" },
             { typeof(ResultFieldOutputMaterialAxes), "material_axes" },
-            { typeof(ResultFieldOutputShellPlaneStress), "shell_plane_stress" },
+            { typeof(ResultFieldOutputShellPlaneStress), "shell_in_plane_state" },
             { typeof(ResultFieldOutputCompositeFailure), "composite_failure" }
         };
         protected readonly string _resultName;

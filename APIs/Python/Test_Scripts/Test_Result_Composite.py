@@ -143,10 +143,10 @@ def check_plane_stress_from_strains(result, step_id, increment_id, layers):
     outputs = result.field_outputs
     fields = result.steps[step_id].increments[increment_id].fields
     check("TOSTRAIN" in list(fields.get_names()), "the result must hold the strains: " + str(list(fields.get_names())))
-    plane = outputs.add_shell_plane_stress(PREFIX + "PLANE_E", "TOSTRAIN", stress_source="Strain")
-    check(plane.stress_source == "Strain" and outputs[PREFIX + "PLANE"].stress_source == "Stress",
-          "the stress source did not read back")
-    outputs.add_composite_failure(PREFIX + "TW_E", "TOSTRAIN", "TsaiWu", stress_source="strain")
+    plane = outputs.add_shell_in_plane_state(PREFIX + "PLANE_E", "TOSTRAIN", quantity="PlaneStressFromStrain")
+    check(plane.quantity == "PlaneStressFromStrain" and outputs[PREFIX + "PLANE"].quantity == "Stress" and
+          plane.item_type == "shell_in_plane_state", "the quantity did not read back")
+    outputs.add_composite_failure(PREFIX + "TW_E", "TOSTRAIN", "TsaiWu", quantity="planestressfromstrain")
     check(fields[PREFIX + "PLANE_E"].components["S11"].get_data().unit ==
           fields["STRESS"].components["S11"].get_data().unit, "plane stresses from strains must be stresses")
     # The plane stresses from the strains are classical lamination theory, within 0.5 % of the largest stress of a ply:
@@ -166,8 +166,36 @@ def check_plane_stress_from_strains(result, step_id, increment_id, layers):
     index = tsai_wu(s11, s22, s12)[0]
     check(abs(result.get_nodal_value(step_id, increment_id, PREFIX + "TW_E", "FAILURE_INDEX", node) - index) < 1e-4,
           "the Tsai-Wu index from the strains does not follow the formula")
-    message = raised_message(lambda: outputs.add_shell_plane_stress(PREFIX + "Bad", "TOSTRAIN", stress_source="Bad"))
-    check(message is not None and "'stress_source'" in message, "a bad stress source must be refused: " + str(message))
+    # The in-plane strains themselves: the 0 degree ply is stretched by the imposed strain and contracts laterally
+    strains = outputs.add_shell_in_plane_state(PREFIX + "PLANE_EPS", "TOSTRAIN", quantity="Strain")
+    check(fields[PREFIX + "PLANE_EPS"].components["E11"].get_data().unit == "/" and
+          "S11" not in list(fields[PREFIX + "PLANE_EPS"].components.get_names()),
+          "the in-plane strains must be the unitless components E11, E22 and E12")
+    e11 = mean(result, step_id, increment_id, PREFIX + "PLANE_EPS", "E11", layers[1])
+    e22 = mean(result, step_id, increment_id, PREFIX + "PLANE_EPS", "E22", layers[1])
+    e1, e2, v12 = 140000.0, 10000.0, 0.3
+    denominator = 1 - v12 * v12 * e2 / e1
+    q11, q22, q12 = e1 / denominator, e2 / denominator, v12 * e2 / denominator
+    ey = -2 * q12 / (q11 + q22) * 0.001
+    check(abs(e11 - 0.001) <= 0.005 * 0.001 and abs(e22 - ey) <= 0.05 * abs(ey),
+          "the 0 degree ply strains are %g and %g, not 0.001 and %g" % (e11, e22, ey))
+    message = raised_message(lambda: outputs.add_shell_in_plane_state(PREFIX + "Bad", "TOSTRAIN", quantity="Bad"))
+    check(message is not None and "'quantity'" in message, "a bad quantity must be refused: " + str(message))
+    message = raised_message(lambda: outputs.add_composite_failure(PREFIX + "Bad", "TOSTRAIN", "TsaiWu",
+                                                                   quantity="Strain"))
+    check(message is not None and "'quantity'" in message, "a failure of strains must be refused: " + str(message))
+    # A stress field takes the stresses as solved, and a strain field the others, so that the stiffness of the plies
+    # never turns stresses into stresses
+    for add, needed in ((lambda: outputs.add_shell_in_plane_state(PREFIX + "Bad", "STRESS", quantity="Strain"),
+                         "TOSTRAIN"),
+                        (lambda: outputs.add_shell_in_plane_state(PREFIX + "Bad", "STRESS",
+                                                                  quantity="PlaneStressFromStrain"), "TOSTRAIN"),
+                        (lambda: outputs.add_composite_failure(PREFIX + "Bad", "STRESS", "TsaiWu",
+                                                               quantity="PlaneStressFromStrain"), "TOSTRAIN"),
+                        (lambda: outputs.add_shell_in_plane_state(PREFIX + "Bad", "TOSTRAIN"), "STRESS")):
+        message = raised_message(add)
+        check(message is not None and "'field_name'" in message and needed in message,
+              "a field of the wrong kind must be refused naming %s: %s" % (needed, message))
 
 
 def main():
@@ -177,7 +205,7 @@ def main():
     increment_id = list(result.steps[step_id].increments.get_ids())[-1]
     outputs = result.field_outputs
     outputs.add_material_axes(PREFIX + "PLY", "STRESS")
-    outputs.add_shell_plane_stress(PREFIX + "PLANE", "STRESS")
+    outputs.add_shell_in_plane_state(PREFIX + "PLANE", "STRESS")
     outputs.add_composite_failure(PREFIX + "MS", "STRESS", "MaxStress")
     outputs.add_composite_failure(PREFIX + "TW", "STRESS", "TsaiWu")
     outputs.add_composite_failure(PREFIX + "HA", "STRESS", "Hashin")
@@ -317,7 +345,7 @@ def main():
     check(message is not None and "'criterion'" in message, "an unknown criterion must be refused: " + str(message))
     message = raised_message(lambda: outputs.add_material_axes(PREFIX + "Bad", "DISP"))
     check(message is not None and "'field_name'" in message, "a vector field must be refused: " + str(message))
-    message = raised_message(lambda: outputs.add_shell_plane_stress(PREFIX + "Bad", PREFIX + "PLY"))
+    message = raised_message(lambda: outputs.add_shell_in_plane_state(PREFIX + "Bad", PREFIX + "PLY"))
     check(message is not None and "'field_name'" in message,
           "a field already in material axes must be refused: " + str(message))
     print("TEST PASSED")

@@ -18,9 +18,9 @@ namespace APIs.Python
         public string field_name { get { return ResolveCompositeFailure().FieldName; } }
         [PythonAPI("The failure criterion: MaxStress, TsaiHill, TsaiWu or Hashin.", Returns = "str")]
         public string criterion { get { return ResolveCompositeFailure().Criterion.ToString(); } }
-        [PythonAPI("Stress for the stresses of a stress field in the ply axes, or Strain for the plane stresses the " +
-                   "elastic constants of the ply material give the in-plane strains of a strain field.", Returns = "str")]
-        public string stress_source { get { return ResolveCompositeFailure().StressSource.ToString(); } }
+        [PythonAPI("The stresses the criterion evaluates: Stress as CalculiX solves them, or " +
+                   "PlaneStressFromStrain from the in-plane strains.", Returns = "str")]
+        public string quantity { get { return ResolveCompositeFailure().Quantity.ToString(); } }
 
 
         // Constructor

@@ -3109,8 +3109,8 @@ Collection of user-defined result field outputs. These are postprocessing defini
 | `create_field_output_equation(name, equation, unit="/")` | Creates an equation draft. References use case-sensitive `FIELD.COMPONENT` names. |
 | `create_field_output_coordinate_system_transform(name, field_name, coordinate_system_name)` | Creates a coordinate-system transform draft for a vector or tensor field. |
 | `create_field_output_material_axes(name, field_name)` | Creates a draft of a tensor field in the material axes of the shells: axis 1 and 2 in the shell plane, axis 3 along the normal, as the material orientation of each shell element gives them, turned by the layer angle on each layer of a composite shell. It has the components of the source field, `S11` to `S31` for `STRESS`, and its invariants. A node off the shells reads NaN. |
-| `create_field_output_shell_plane_stress(name, field_name, stress_source='Stress')` | Creates a draft of the plane stress of the shells from the in-plane components of a tensor field in the material axes. `stress_source` `Stress` takes the stresses of a stress field, as CalculiX computes them in 3D, and `Strain` the plane stresses the elastic constants of the ply material - E1, E2, v12 and G12 of its first temperature - give the in-plane strains of a strain field such as `TOSTRAIN`, as classical lamination theory computes them; a node whose material has no elastic constants then reads NaN. The components are `S11`, `S22`, `S12`, the in-plane principal values `PRINCIPAL_MAX` and `PRINCIPAL_MIN`, the maximum in-plane shear `SHEAR_MAX`, and `ANGLE`, the angle in degrees from axis 1 to the maximum principal direction, in (-90, 90]. A node whose in-plane shear is below 0.1 % of half the difference of `S11` and `S22` is in its principal axes and reads exactly 0 or 90, and a node whose in-plane stress is practically zero - its maximum shear below a millionth of the largest in the field - has no principal direction and reads NaN in `ANGLE`. A node off the shells reads NaN. |
-| `create_field_output_composite_failure(name, field_name, criterion, stress_source='Stress')` | Creates a draft of a failure criterion of the plies, evaluated from the in-plane stresses in the material axes with the composite strength of the material of each ply; `stress_source` takes them as `create_field_output_shell_plane_stress` does. `criterion` is `MaxStress`, `TsaiHill`, `TsaiWu` or `Hashin` (Hashin 1980, plane stress). The components are `FAILURE_INDEX`, `RESERVE_FACTOR`, the factor the stresses can be multiplied by to reach failure, NaN where no factor does, and `MODE`, the governing mode: 1 fiber tension, 2 fiber compression, 3 matrix tension, 4 matrix compression, 5 in-plane shear, and 0 for `TsaiHill` and `TsaiWu`, which have no modes. `MAX_FAILURE_INDEX` is the largest failure index of all layers of a shell element, shown on each of its layers, and `CRITICAL_LAYER` the layer it is reached in; a node takes the largest of the shell elements around it. A node off the shells or of a material without a composite strength reads NaN. |
+| `create_field_output_shell_in_plane_state(name, field_name, quantity='Stress')` | Creates a draft of the in-plane state of the shells, in the material axes of the shell elements and of the layers of composite shells, neglecting the components through the thickness. `quantity` `Stress` takes the stresses of a stress field such as `STRESS` as CalculiX solves them in 3D; `PlaneStressFromStrain` the plane stresses the elastic constants of the ply material - E1, E2, v12 and G12 of its first temperature - give the in-plane strains of a strain field such as `TOSTRAIN`, as classical lamination theory computes them, a node whose material has no elastic constants reading NaN; and `Strain` the in-plane strains of a strain field. A stress field takes only `Stress` and a strain field, one without a unit, only the other two: any other pairing is refused naming `field_name`. The components are `S11`, `S22` and `S12` of a stress, or `E11`, `E22` and the tensor shear `E12` of a strain, the in-plane principal values `PRINCIPAL_MAX` and `PRINCIPAL_MIN`, the maximum in-plane shear `SHEAR_MAX`, and `ANGLE`, the angle in degrees from axis 1 to the maximum principal direction, in (-90, 90]. A node whose in-plane shear is below 0.1 % of half the difference of the two normal components is in its principal axes and reads exactly 0 or 90, and a node whose in-plane state is practically zero - its maximum shear below a millionth of the largest in the field - has no principal direction and reads NaN in `ANGLE`. A node off the shells reads NaN. |
+| `create_field_output_composite_failure(name, field_name, criterion, quantity='Stress')` | Creates a draft of a failure criterion of the plies, evaluated from the in-plane stresses in the material axes with the composite strength of the material of each ply; `quantity` takes them as `create_field_output_shell_in_plane_state` does, `Stress` or `PlaneStressFromStrain` - `Strain` is refused naming `quantity`, since a criterion evaluates stresses. `criterion` is `MaxStress`, `TsaiHill`, `TsaiWu` or `Hashin` (Hashin 1980, plane stress). The components are `FAILURE_INDEX`, `RESERVE_FACTOR`, the factor the stresses can be multiplied by to reach failure, NaN where no factor does, and `MODE`, the governing mode: 1 fiber tension, 2 fiber compression, 3 matrix tension, 4 matrix compression, 5 in-plane shear, and 0 for `TsaiHill` and `TsaiWu`, which have no modes. `MAX_FAILURE_INDEX` is the largest failure index of all layers of a shell element, shown on each of its layers, and `CRITICAL_LAYER` the layer it is reached in; a node takes the largest of the shell elements around it. A node off the shells or of a material without a composite strength reads NaN. |
 | `create_median_filter(source="AllNodes", number_of_layers=1, number_of_iterations=1)` | Creates a median filter. `source` can be `"AllNodes"` or `"SurfaceNodes"`, in any case. |
 | `create_average_filter(source="AllNodes", number_of_layers=1, number_of_iterations=1)` | Creates an average filter. `source` can be `"AllNodes"` or `"SurfaceNodes"`, in any case. |
 | `create_smooth_filter(source="AllNodes", number_of_layers=1, number_of_iterations=1)` | Creates a smooth filter. `source` can be `"AllNodes"` or `"SurfaceNodes"`, in any case. |
@@ -3252,7 +3252,7 @@ result.field_outputs.export_to_csv(
 
 Every `create_*` above has a single call counterpart that creates the definition and adds it to the
 result in one step: `add_limit`, `add_envelope`, `add_equation` and
-`add_coordinate_system_transform`, `add_material_axes`, `add_shell_plane_stress` and `add_composite_failure`, each
+`add_coordinate_system_transform`, `add_material_axes`, `add_shell_in_plane_state` and `add_composite_failure`, each
 taking the arguments of its `create_*` plus the optional
 `filter1` and `filter2`, and each with a matching `replace_*` that takes `old_name` first.
 
@@ -3265,7 +3265,7 @@ draft = outputs.create_field_output_equation('SEQV3', 'STRESS.MISES * 3')
 outputs.add(draft)
 ```
 
-The shell outputs - material axes, shell plane stress and composite failure - need the model the results were
+The shell outputs - material axes, shell in-plane state and composite failure - need the model the results were
 solved from: when the results are opened, the shell sections and material orientations of the model give the material
 axes of every shell element, and of every layer of a composite shell, whose layer elements CalculiX writes after all
 others. Each layer of a composite shell section is then a result element set named `<section name>_LAYER-<n>`, layer 1
@@ -3276,14 +3276,14 @@ model part are gathered in a group of the results parts tree named after it, or 
 part still has that name; `pmx.model.tree.get_layout('results', 'parts')` lists it. Results opened without such a model, or a field that is not a tensor with all its
 components in the global axes, are refused naming `field_name`. A `TensorPlot` of the material axes draws `S11`, `S22`
 and `S33` along the material axes of each node and the principal values along their directions, and one of the shell
-plane stress draws `S11` and `S22` along axes 1 and 2 and `PRINCIPAL_MAX` and `PRINCIPAL_MIN` along the in-plane
+in-plane state draws its first two components along axes 1 and 2 and `PRINCIPAL_MAX` and `PRINCIPAL_MIN` along the in-plane
 principal directions; the other components and the composite failure have no direction to draw.
 
 ```python
 outputs = pmx.results.current.field_outputs
 outputs.add_material_axes('PLY', 'STRESS')
 outputs.add_composite_failure('TSAI_WU', 'STRESS', 'TsaiWu')
-outputs.add_shell_plane_stress('CLT', 'TOSTRAIN', stress_source='Strain')
+outputs.add_shell_in_plane_state('CLT', 'TOSTRAIN', quantity='PlaneStressFromStrain')
 ```
 
 A results `replace_*` **re-specifies the whole definition**, unlike a model `replace_*` where a value
@@ -3354,15 +3354,15 @@ Material axes draft returned by `create_field_output_material_axes`.
 | `name` | Field output name. |
 | `field_name` | Source tensor field name. |
 
-### `FieldOutputShellPlaneStressDraft`
+### `FieldOutputShellInPlaneStateDraft`
 
-Shell plane stress draft returned by `create_field_output_shell_plane_stress`.
+Shell in-plane state draft returned by `create_field_output_shell_in_plane_state`.
 
 | Member | Description |
 | --- | --- |
 | `name` | Field output name. |
 | `field_name` | Source tensor field name. |
-| `stress_source` | `Stress` or `Strain`. |
+| `quantity` | `Stress`, `PlaneStressFromStrain` or `Strain`. |
 
 ### `FieldOutputCompositeFailureDraft`
 
@@ -3373,7 +3373,7 @@ Composite failure draft returned by `create_field_output_composite_failure`.
 | `name` | Field output name. |
 | `field_name` | Source tensor field name. |
 | `criterion` | `MaxStress`, `TsaiHill`, `TsaiWu` or `Hashin`. |
-| `stress_source` | `Stress` or `Strain`. |
+| `quantity` | `Stress` or `PlaneStressFromStrain`. |
 
 ### `FieldOutput`
 
@@ -3382,7 +3382,7 @@ Base representation of a user-defined result field output.
 | Member | Description |
 | --- | --- |
 | `name` | Field output name. |
-| `item_type` | `limit`, `envelope`, `equation`, `coordinate_system_transform`, `material_axes`, `shell_plane_stress` or `composite_failure`, named after the `add_*` method that makes it. |
+| `item_type` | `limit`, `envelope`, `equation`, `coordinate_system_transform`, `material_axes`, `shell_in_plane_state` or `composite_failure`, named after the `add_*` method that makes it. |
 | `valid` | False when a field, part, element set or coordinate system the output is computed from no longer resolves. |
 | `filter1` | First `FieldOutputFilter`, or `None` when disabled. |
 | `filter2` | Second `FieldOutputFilter`, or `None` when disabled. |
@@ -3427,12 +3427,12 @@ Limit-based field output returned by `add(output)` or collection lookup.
 | --- | --- |
 | `field_name` | Source tensor field name. |
 
-### `FieldOutputShellPlaneStress`
+### `FieldOutputShellInPlaneState`
 
 | Member | Description |
 | --- | --- |
 | `field_name` | Source tensor field name. |
-| `stress_source` | `Stress` or `Strain`. |
+| `quantity` | `Stress`, `PlaneStressFromStrain` or `Strain`. |
 
 ### `FieldOutputCompositeFailure`
 
@@ -3440,7 +3440,7 @@ Limit-based field output returned by `add(output)` or collection lookup.
 | --- | --- |
 | `field_name` | Source tensor field name. |
 | `criterion` | `MaxStress`, `TsaiHill`, `TsaiWu` or `Hashin`. |
-| `stress_source` | `Stress` or `Strain`. |
+| `quantity` | `Stress` or `PlaneStressFromStrain`. |
 
 ## Steps and increments
 

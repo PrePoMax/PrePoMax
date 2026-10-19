@@ -40,13 +40,14 @@ namespace CaeResults
         private string _fieldName;
         private CompositeFailureCriterionEnum _criterion;
         [OptionalField]
-        private ShellStressSourceEnum _stressSource;
+        private ShellInPlaneQuantityEnum _quantity;
 
 
         // Properties                                                                                                               
         public string FieldName { get { return _fieldName; } set { _fieldName = value; } }
         public CompositeFailureCriterionEnum Criterion { get { return _criterion; } set { _criterion = value; } }
-        public ShellStressSourceEnum StressSource { get { return _stressSource; } set { _stressSource = value; } }
+        // A failure criterion evaluates stresses, so the in-plane strains are none of its quantities
+        public ShellInPlaneQuantityEnum Quantity { get { return _quantity; } set { _quantity = value; } }
 
 
         // Constructor

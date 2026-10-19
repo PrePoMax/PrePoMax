@@ -21,7 +21,7 @@ using CaeModel;
 namespace PrePoMax
 {
     [Serializable]
-    public class ViewResultFieldOutputShellPlaneStress : ViewResultFieldOutput
+    public class ViewResultFieldOutputShellInPlaneState : ViewResultFieldOutput
     {
         // Variables                                                                                                                
 
@@ -34,27 +34,28 @@ namespace PrePoMax
         public override string Name { get { return ResultFieldOutput.Name; } set { ResultFieldOutput.Name = value; } }
         //
         [CategoryAttribute("Data")]
-        [OrderedDisplayName(1, 10, "Field name")]
-        [DescriptionAttribute("Stress or strain field whose in-plane components in the material axes give the " +
-                              "plane stress of the shell elements and of the layers of the composite shells.")]
+        [OrderedDisplayName(1, 10, "Quantity")]
+        [DescriptionAttribute("The in-plane state of the plies: the stresses as CalculiX solves them in 3D, the plane " +
+                              "stresses the elastic constants of the ply material give the in-plane strains, as " +
+                              "classical lamination theory computes them, or the in-plane strains.")]
         [Id(2, 1)]
-        public string FieldName { get { return ResultFieldOutput.FieldName; } set { ResultFieldOutput.FieldName = value; } }
+        public ShellInPlaneQuantityEnum Quantity
+        {
+            get { return ResultFieldOutput.Quantity; }
+            set { ResultFieldOutput.Quantity = value; }
+        }
         //
         [CategoryAttribute("Data")]
-        [OrderedDisplayName(2, 10, "Stress from")]
-        [DescriptionAttribute("The in-plane stresses of the plies: the stresses of a stress field in the ply axes, or the " +
-                              "plane stresses the elastic constants of the ply material give the in-plane " +
-                              "strains of a strain field, as classical lamination theory computes them.")]
+        [OrderedDisplayName(2, 10, "Source field")]
+        [DescriptionAttribute("The field whose in-plane components in the material axes of the shell elements and of " +
+                              "the layers of the composite shells give the in-plane state: a stress field for the " +
+                              "stresses as solved, a strain field otherwise.")]
         [Id(3, 1)]
-        public ShellStressSourceEnum StressSource
-        {
-            get { return ResultFieldOutput.StressSource; }
-            set { ResultFieldOutput.StressSource = value; }
-        }
+        public string FieldName { get { return ResultFieldOutput.FieldName; } set { ResultFieldOutput.FieldName = value; } }
 
 
         // Constructors                                                                                                             
-        public ViewResultFieldOutputShellPlaneStress(ResultFieldOutputShellPlaneStress resultFieldOutput)
+        public ViewResultFieldOutputShellInPlaneState(ResultFieldOutputShellPlaneStress resultFieldOutput)
             : base(resultFieldOutput)
         {
         }
@@ -65,9 +66,9 @@ namespace PrePoMax
         {
             return _resultFieldOutput;
         }
-        public void PopulateDropDownLists(string[] tensorFieldNames)
+        public void PopulateDropDownLists(string[] fieldNames)
         {
-            _dctd.PopulateProperty(nameof(FieldName), tensorFieldNames);
+            _dctd.PopulateProperty(nameof(FieldName), fieldNames);
         }
     }
 }

@@ -234,7 +234,7 @@ namespace APIs.Python
             types.Add("reference_axis", typeof(MaterialOrientationAxisEnum));
             // Composite failure
             types.Add("criterion", typeof(CompositeFailureCriterionEnum));
-            types.Add("stress_source", typeof(ShellStressSourceEnum));
+            types.Add("quantity", typeof(ShellInPlaneQuantityEnum));
             // Steps, loads and interactions
             types.Add("incrementation_type", typeof(IncrementationTypeEnum));
             types.Add("solver_type", typeof(SolverTypeEnum));

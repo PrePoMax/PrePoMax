@@ -11,27 +11,28 @@ using CaeResults;
 
 namespace APIs.Python
 {
-    public class ResultFieldOutputShellPlaneStressDraftAPI : ResultFieldOutputDraftAPI
+    public class ResultFieldOutputShellInPlaneStateDraftAPI : ResultFieldOutputDraftAPI
     {
         // Variables
         private readonly string _fieldName;
-        private readonly ShellStressSourceEnum _stressSource;
+        private readonly ShellInPlaneQuantityEnum _quantity;
 
 
         // Properties
         [PythonAPI("The source tensor field name.", Returns = "str")]
         public string field_name { get { return _fieldName; } }
-        [PythonAPI("Stress for the stresses of a stress field in the ply axes, or Strain for the plane stresses the " +
-                   "elastic constants of the ply material give the in-plane strains of a strain field.", Returns = "str")]
-        public string stress_source { get { return _stressSource.ToString(); } }
+        [PythonAPI("The in-plane quantity: Stress for the stresses as CalculiX solves them, PlaneStressFromStrain " +
+                   "for the plane stresses the elastic constants of the ply material give the in-plane strains, " +
+                   "or Strain for the in-plane strains.", Returns = "str")]
+        public string quantity { get { return _quantity.ToString(); } }
 
 
         // Constructor
-        internal ResultFieldOutputShellPlaneStressDraftAPI(string name, string fieldName, ShellStressSourceEnum stressSource)
+        internal ResultFieldOutputShellInPlaneStateDraftAPI(string name, string fieldName, ShellInPlaneQuantityEnum quantity)
             : base(name)
         {
             _fieldName = fieldName;
-            _stressSource = stressSource;
+            _quantity = quantity;
         }
 
 
@@ -39,14 +40,14 @@ namespace APIs.Python
         protected override ResultFieldOutput CreateFieldOutput()
         {
             ResultFieldOutputShellPlaneStress fieldOutput = new ResultFieldOutputShellPlaneStress(name, _fieldName);
-            fieldOutput.StressSource = _stressSource;
+            fieldOutput.Quantity = _quantity;
             return fieldOutput;
         }
         public override string ToString()
         {
-            return "FieldOutputShellPlaneStressDraft(name=" + StringListAPI.ToDisplayString(name) +
+            return "FieldOutputShellInPlaneStateDraft(name=" + StringListAPI.ToDisplayString(name) +
                    ", field_name=" + StringListAPI.ToDisplayString(_fieldName) +
-                   ", stress_source=" + StringListAPI.ToDisplayString(_stressSource.ToString()) + ")";
+                   ", quantity=" + StringListAPI.ToDisplayString(_quantity.ToString()) + ")";
         }
     }
 }
