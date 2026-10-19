@@ -317,6 +317,11 @@ namespace PrePoMax.Forms
             _viewSection = null;
             lvTypes.Items.Clear();
             propertyGrid.SelectedObject = null;            
+            // Only a composite shell section shows its layers
+            dgvData.DataSource = null;
+            dgvData.Columns.Clear();
+            tcProperties.TabPages.Clear();
+            tcProperties.TabPages.Add(_pages[0]);   // properties
             //
             _sectionNames = _controller.GetSectionNames();
             _sectionToEditName = sectionToEditName;
