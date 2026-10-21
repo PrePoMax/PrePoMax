@@ -52,6 +52,12 @@
 #plate by tetrahedra. The overhanging plate is meshed at the first order as well, where every mesh part must fill
 #its own cell, and then at either order again with a boundary condition on a face of the plate.
 #
+#At the second order with the midside nodes on the geometry, gmsh places the midside node of an edge on a surface
+#by the parametric coordinates of the edge's end nodes. sweep_frustum.brep and sweep_split_target.brep are swept so,
+#and every midside node must lie within a quarter of its edge length of the edge's midpoint. The target nodes took
+#their parametric coordinates from gmsh's closest point, which returns zeros on a CAD face, and the midside nodes of
+#the target were drawn to the origin of the surface parametrization, ten to twenty five edge lengths away.
+#
 #sweep_bent_plate.brep is a plate bent along a cylinder, with a bore through each of its two wings. Its
 #front face is a plane, the cylinder of the bend and a plane again, and the bores make every other face a
 #wall with a hole, so no single face of it is a sweep source. The detection has to try the faces that
@@ -393,6 +399,53 @@ def test_cells_at_either_order():
     items.remove([SWEEP_NAME, PARAMETERS_NAME])
 
 
+def largest_midside_offset(part):
+    """The largest distance of a midside node from the midpoint of its edge, relative to the edge length, over the
+    second order hexahedra and wedges of a mesh part."""
+    edges = {20: (8, [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]),
+             15: (6, [(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 3), (0, 3), (1, 4), (2, 5)])}
+    data = pmx.model.elements.get_data()
+    offsets = [int(i) for i in data.offsets]
+    connectivity = [int(i) for i in data.connectivity]
+    node_counts = [int(n) for n in data.node_counts]
+    index = dict((int(element_id), i) for i, element_id in enumerate(data.ids))
+    coordinates = dict((int(node_id), list(c)) for node_id, c in zip(part.get_node_ids(), part.get_node_coordinates()))
+    largest = 0
+    for element_id in part.get_element_ids():
+        i = index[int(element_id)]
+        check(node_counts[i] in edges, part.name + " must be meshed by second order hexahedra and wedges only: an " +
+              "element has " + str(node_counts[i]) + " nodes")
+        nodes = connectivity[offsets[i]:offsets[i] + node_counts[i]]
+        corners, element_edges = edges[node_counts[i]]
+        for k, (a, b) in enumerate(element_edges):
+            pa, pb, pm = coordinates[nodes[a]], coordinates[nodes[b]], coordinates[nodes[corners + k]]
+            length = sum((pa[j] - pb[j]) ** 2 for j in range(3)) ** 0.5
+            offset = sum((pm[j] - (pa[j] + pb[j]) / 2) ** 2 for j in range(3)) ** 0.5
+            largest = max(largest, offset / length)
+    return largest
+
+
+def test_midside_nodes_on_geometry():
+    # The midside nodes on the target surfaces are placed by the parametric coordinates of the target nodes, which the
+    # projection onto the target took as the zeros gmsh's closest point returns on a CAD face
+    items = pmx.model.mesh.setup_items
+    for file_name in ("sweep_frustum.brep", "sweep_split_target.brep"):
+        solids, compound = import_geometry(file_name)
+        part = solids[0]
+        selection = pmx.create.selection_by_ids('geometry', 'parts', 'parts', [part.id])
+        items.add_meshing_parameters(PARAMETERS_NAME, selection, second_order=True, midside_nodes_on_geometry=True)
+        items.add_sweep_mesh(SWEEP_NAME, selection)
+        report = pmx.model.mesh.generate(part.name)
+        check(report[part.name] == "", "the sweep of " + file_name + " with the midside nodes on the geometry " +
+              "reported: " + report[part.name])
+        meshed = [mesh_part for mesh_part in pmx.model.parts if mesh_part.name == part.name][0]
+        largest = largest_midside_offset(meshed)
+        print("midside nodes on the geometry:", file_name, "largest offset %.3f" % largest)
+        check(largest < 0.25, "a midside node of the sweep of %s lies %.3g edge lengths from the midpoint of its edge" %
+              (file_name, largest))
+        items.remove([SWEEP_NAME, PARAMETERS_NAME])
+
+
 def test_bent_plate():
     solids, compound = import_geometry("sweep_bent_plate.brep")
     check(compound is None and len(solids) == 1, "the bent plate must import as a single part")
@@ -699,6 +752,7 @@ def main():
     test_two_parts_apart()
     test_plate_imprinted_on_both_sides()
     test_cells_at_either_order()
+    test_midside_nodes_on_geometry()
     test_spline_edges_and_round_post()
     test_bent_plate()
     test_geometric_constraints()

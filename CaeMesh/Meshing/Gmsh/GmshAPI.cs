@@ -3460,6 +3460,14 @@ namespace CaeMesh
             }
             return alwaysFixedEdgeIds;
         }
+        /// <summary>
+        /// Whether the edge carries a count QuadWild chose in an earlier round, rather than one the user set.
+        /// </summary>
+        private bool IsQuadWildChosenCount(int edgeId)
+        {
+            return _userPinnedEdgeIds != null && !_userPinnedEdgeIds.Contains(edgeId) &&
+                   _gmshData.EdgeIdNumElements.ContainsKey(edgeId);
+        }
         private bool IsQuadWildEdgeFixed(int edgeId, HashSet<int> alwaysFixedEdgeIds, HashSet<int> wallSurfaceIds)
         {
             if (alwaysFixedEdgeIds.Contains(edgeId)) return true;
@@ -4531,11 +4539,17 @@ namespace CaeMesh
                     .ToDictionary(entry => entry.Key, entry => entry.Value);
                 HashSet<int> wallSurfaceIds = new HashSet<int>(walls.Select(wall => wall.SurfaceId));
                 HashSet<int> alwaysFixedEdgeIds = GetAlwaysFixedQuadWildEdgeIds(_sweepBlocks, walls, userPins);
+                // A source is meshed again with the edges the walls moved fixed, so a source whose one free edge carries
+                // the count QuadWild chose in an earlier round has no free edge left once the walls move it - surface 2
+                // of Overlap-7 of SweepQW sweep_66 went from 11 to an odd total - and needs the even total as well; the
+                // row holds without a change while the walls leave the edge as QuadWild meshed it
                 foreach (var surfaceId in _quadWildSourceIds)
                 {
                     Gmsh.Model.GetAdjacencies(2, surfaceId, out _, out edgeIds);
                     edgeIds = edgeIds.Select(id => Math.Abs(id)).Distinct().ToArray();
-                    if (edgeIds.All(id => IsQuadWildEdgeFixed(id, alwaysFixedEdgeIds, wallSurfaceIds)))
+                    int[] freeEdgeIds = edgeIds.Where(id => !IsQuadWildEdgeFixed(id, alwaysFixedEdgeIds, wallSurfaceIds))
+                                               .ToArray();
+                    if (freeEdgeIds.Length == 0 || (freeEdgeIds.Length == 1 && IsQuadWildChosenCount(freeEdgeIds[0])))
                         problem.AddEvenSum("QuadWild Surface " + surfaceId, IntervalRowTierEnum.Hard, edgeIds);
                     // QuadWild lays its own patches over the source and has to reach the counts given on its edges with
                     // them; given fewer than gmsh measured, the patches of sweep_30 found no layout at all
