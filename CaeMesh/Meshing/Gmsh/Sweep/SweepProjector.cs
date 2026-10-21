@@ -144,7 +144,9 @@ namespace CaeMesh.Sweep
         /// the nearer one win. The containment is asked with the coordinates of the projected point:
         /// asked with its parametric coordinates gmsh answers yes for every face, and the parametric
         /// coordinates the projection returns for a CAD face are all zero anyway. The test is skipped
-        /// when there is nothing to tell apart.
+        /// when there is nothing to tell apart. For the same reason the parametric coordinates are
+        /// taken from the projected point: given the zeros, gmsh put every second order midside node
+        /// of the target at the origin of the surface parametrization.
         /// </summary>
         public static void ProjectOntoNearestSurface(double[] input, IEnumerable<int> surfaceIds, double[] bestCoor,
                                                      double[] bestParam, double[] bestDistance, int[] bestSurfaceId)
@@ -165,8 +167,10 @@ namespace CaeMesh.Sweep
             double[] parametricCoord;
             foreach (var surfaceId in surfaceIdList)
             {
-                Gmsh.Model.GetClosestPoint(2, surfaceId, input, out closestCoord, out parametricCoord);
-                if (closestCoord.Length != 3 * count || parametricCoord.Length != 2 * count)
+                Gmsh.Model.GetClosestPoint(2, surfaceId, input, out closestCoord, out _);
+                parametricCoord = null;
+                if (bestParam != null) Gmsh.Model.GetParametrization(2, surfaceId, closestCoord, out parametricCoord);
+                if (closestCoord.Length != 3 * count || (parametricCoord != null && parametricCoord.Length != 2 * count))
                     throw new CaeException("The projection onto the sweep target surface failed.");
                 //
                 for (int k = 0; k < count; k++)
@@ -269,8 +273,10 @@ namespace CaeMesh.Sweep
         {
             double[] closestCoord;
             double[] parametricCoord;
-            Gmsh.Model.GetClosestPoint(2, surfaceId, coor, out closestCoord, out parametricCoord);
-            if (closestCoord.Length < 3 || parametricCoord.Length < 2) return false;
+            Gmsh.Model.GetClosestPoint(2, surfaceId, coor, out closestCoord, out _);
+            if (closestCoord.Length < 3) return false;
+            Gmsh.Model.GetParametrization(2, surfaceId, closestCoord, out parametricCoord);
+            if (parametricCoord.Length < 2) return false;
             //
             coor[0] = closestCoord[0];
             coor[1] = closestCoord[1];
