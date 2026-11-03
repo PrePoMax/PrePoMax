@@ -633,6 +633,10 @@ namespace PrePoMax.Forms
                             if (Section is SolidSection && partType == PartType.Shell) return true;
                             else return false;
                         }
+                        else if (Section.RegionType == RegionTypeEnum.NodeSetName)
+                        {
+                            return true;
+                        }
                         else if (Section.RegionType == RegionTypeEnum.ElementSetName)
                         {
                             FeElementSet elementSet = _controller.Model.Mesh.ElementSets[Section.RegionName];
@@ -644,9 +648,14 @@ namespace PrePoMax.Forms
                         {
                             return true;
                         }
+                        else if (Section.RegionType == RegionTypeEnum.ReferencePointName)
+                        {
+                            return true;
+                        }
                         else if (Section.RegionType == RegionTypeEnum.Selection)
                         {
-                            if (Section.CreationIds != null)
+                            if (Section is PointMassSection) return Section.CreationIds != null;
+                            else if (Section.CreationIds != null)
                             {
                                 int partId;
                                 BasePart part;
