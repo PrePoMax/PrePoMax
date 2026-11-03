@@ -146,6 +146,11 @@ namespace PrePoMax.Forms
                     this.Height += delta;
                     gbProperties.Anchor |= AnchorStyles.Bottom;
                 }
+                //
+                Size clientSize = ClientSize;
+                FormBorderStyle = gbProperties.IsCollapsed ? FormBorderStyle.FixedSingle : FormBorderStyle.Sizable;
+                ClientSize = clientSize;
+                //
                 _collapsed = gbProperties.IsCollapsed;
             }
             catch

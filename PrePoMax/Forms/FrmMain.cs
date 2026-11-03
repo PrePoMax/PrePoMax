@@ -10983,11 +10983,11 @@ namespace PrePoMax
             if (!form.Visible)
             {
                 CloseAllForms();
-                SetFormLocation((Form)form);
                 form.Text = text;
                 if (itemToEditName != null) form.Text += ": " + itemToEditName;
                 if (form.PrepareForm(stepName, itemToEditName))
                 {
+                    SetFormLocation((Form)form);
                     ((Form)form).Show(this);
                 }
                 else
@@ -11003,35 +11003,10 @@ namespace PrePoMax
         }
         private void SetFormLocation(Form form)
         {
-            Rectangle screenBounds;
-            bool intersects = false;
-            Rectangle formSize = form.ClientRectangle;
             Point location = new Point(Left + _formLocation.X, Top + _formLocation.Y);
-            Rectangle locationRect = new Rectangle(location, new Size(1, 1));
+            if (!Screen.AllScreens.Any(screen => screen.Bounds.Contains(location))) location = Location;
             //
-            foreach (var screen in Screen.AllScreens)
-            {
-                screenBounds = screen.Bounds;
-                if (screenBounds.IntersectsWith(locationRect))
-                {
-                    intersects = true;
-                    // Size
-                    if (formSize.Width > screenBounds.Width) formSize.Width = screenBounds.Width;
-                    if (formSize.Height > screenBounds.Height) formSize.Height = screenBounds.Height;
-                    // Location X
-                    if (location.X < screenBounds.Left) location.X = screenBounds.Left;
-                    else if (location.X + formSize.Width > screenBounds.Left + screenBounds.Width)
-                        location.X = screenBounds.Left + screenBounds.Width - formSize.Width;
-                    // Location Y
-                    if (location.Y < screenBounds.Top) location.Y = screenBounds.Top;
-                    else if (location.Y + formSize.Height > screenBounds.Top + screenBounds.Height)
-                        location.Y = screenBounds.Top + screenBounds.Height - formSize.Height;
-                }
-            }
-            //
-            if (!intersects) location = Location;
-            //
-            if (form.Location != location) form.Location = location;
+            form.SetLocationInsideWorkingArea(location);
         }
         private void SaveFormLocation(Form form)
         {

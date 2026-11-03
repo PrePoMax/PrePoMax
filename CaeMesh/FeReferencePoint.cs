@@ -55,7 +55,9 @@ namespace CaeMesh
         private string _refNodeSetName;                         //ISerializable
         private FeReferencePointMotion _motion;                 //ISerializable
         private string _rotNodeSetName;                         //ISerializable
-        private bool _nameVisible;                              //ISerializable
+        private int _refNodeId;                                 //ISerializable
+        private int _rotNodeId;                                 //ISerializable
+        private bool _nameVisible;                             //ISerializable
         private bool _twoD;                                     //ISerializable
         private Color _color;                                   //ISerializable
 
@@ -85,6 +87,9 @@ namespace CaeMesh
         public string RefNodeSetName { get { return _refNodeSetName; } set { _refNodeSetName = value; } }
         public FeReferencePointMotion Motion { get { return _motion; } set { _motion = value; } }
         public string RotNodeSetName { get { return _rotNodeSetName; } set { _rotNodeSetName = value; } }
+        public int RefNodeId { get { return _refNodeId; } set { _refNodeId = value; } }
+        public int RotNodeId { get { return _rotNodeId; } set { _rotNodeId = value; } }
+        public bool HasNodeIds { get { return _refNodeId > 0 && _rotNodeId > 0; } }
         public bool NameVisible { get { return _nameVisible; } set { _nameVisible = value; } }
         public bool TwoD { get { return _twoD; } }
         public Color Color { get { return _color; } set { _color = value; } }
@@ -108,6 +113,8 @@ namespace CaeMesh
             Clear();
             //
             _twoD = false;
+            _refNodeId = -1;
+            _rotNodeId = -1;
             //
             _x.SetEquationFromValue(x);
             _y.SetEquationFromValue(y);
@@ -123,6 +130,9 @@ namespace CaeMesh
             string createdFromNodeSetName = null;
             // Compatibility for version v1.1.1
             _twoD = false;
+            // Compatibility for version v3.0.0
+            _refNodeId = -1;
+            _rotNodeId = -1;
             //
             foreach (SerializationEntry entry in info)
             {
@@ -169,6 +179,10 @@ namespace CaeMesh
                         _motion = (FeReferencePointMotion)entry.Value; break;
                     case "_rotNodeSetName":
                         _rotNodeSetName = (string)entry.Value; break;
+                    case "_refNodeId":
+                        _refNodeId = (int)entry.Value; break;
+                    case "_rotNodeId":
+                        _rotNodeId = (int)entry.Value; break;
                     case "_nameVisible":
                         _nameVisible = (bool)entry.Value; break;
                     case "_twoD":
@@ -298,6 +312,8 @@ namespace CaeMesh
             info.AddValue("_refNodeSetName", _refNodeSetName, typeof(string));
             info.AddValue("_motion", _motion, typeof(FeReferencePointMotion));
             info.AddValue("_rotNodeSetName", _rotNodeSetName, typeof(string));
+            info.AddValue("_refNodeId", _refNodeId, typeof(int));
+            info.AddValue("_rotNodeId", _rotNodeId, typeof(int));
             info.AddValue("_nameVisible", _nameVisible, typeof(bool));
             info.AddValue("_twoD", _twoD, typeof(bool));
             info.AddValue("_color", _color, typeof(Color));

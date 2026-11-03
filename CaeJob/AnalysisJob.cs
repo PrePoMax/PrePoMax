@@ -206,7 +206,7 @@ namespace CaeJob
 
         // Constructor                                                                                                              
         public AnalysisJob(string name, string executable, string argument, string workDirectory)
-            : base(name)
+            : base(name, GetAdditionalNameCharacters())
         {
             _executable = executable;
             _argument = argument;
@@ -282,6 +282,9 @@ namespace CaeJob
                         break;
                 }
             }
+            // Compatibility v 3.0.0
+            _additionalCharacters = GetAdditionalNameCharacters();
+            //
             _energyOutputParser = new CalculixEnergyOutputParser();
         }
 
@@ -292,7 +295,14 @@ namespace CaeJob
         }
 
 
-        // Methods                                                                                                                  
+        // Static methods
+        public static HashSet<char> GetAdditionalNameCharacters()
+        {
+            return new HashSet<char>() { '+' };
+        }
+
+
+        // Methods
         public void Submit(int numOfRunSteps, int numOfRunIncrements, bool useBackgroundWorker = true,
                            int timeoutMilliseconds = 0)
         {

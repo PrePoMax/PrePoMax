@@ -1130,6 +1130,8 @@ namespace PrePoMax
                                             "setup item, which revolves the parts it meshes.");
                 }
             }
+            // Compatibility v3.0.0
+            if (_model != null) _model.AssignMissingReferencePointNodeIds();
         }
         /// <summary>
         /// Meshes a part the user defined no mesh setup item for by Netgen tetrahedra, whatever mesh its
@@ -15663,6 +15665,9 @@ namespace PrePoMax
         // COMMANDS ********************************************************************************
         public void AddModelReferencePointCommand(FeReferencePoint referencePoint)
         {
+            if (!referencePoint.HasNodeIds) _model.Mesh.SetFreeReferencePointNodeIds(referencePoint);
+            _model.Mesh.CheckReferencePointNodeIds(referencePoint, null);
+            //
             CAddModelReferencePoint comm = new CAddModelReferencePoint(referencePoint);
             _commands.AddAndExecute(comm);
         }
@@ -15678,6 +15683,14 @@ namespace PrePoMax
         }
         public void ReplaceModelReferencePointCommand(string oldReferencePointName, FeReferencePoint newReferencePoint)
         {
+            if (!newReferencePoint.HasNodeIds)
+            {
+                FeReferencePoint oldReferencePoint = _model.Mesh.ReferencePoints[oldReferencePointName];
+                newReferencePoint.RefNodeId = oldReferencePoint.RefNodeId;
+                newReferencePoint.RotNodeId = oldReferencePoint.RotNodeId;
+            }
+            _model.Mesh.CheckReferencePointNodeIds(newReferencePoint, oldReferencePointName);
+            //
             CReplaceModelReferencePoint comm = new CReplaceModelReferencePoint(oldReferencePointName, newReferencePoint);
             _commands.AddAndExecute(comm);
         }
@@ -15700,12 +15713,14 @@ namespace PrePoMax
         public void AddModelReferencePoint(FeReferencePoint referencePoint)
         {
             ReselectModelReferencePoint(referencePoint); // in order for the Regenerate history to work perform the selection
+            // Compatibility v3.0.0
+            if (!referencePoint.HasNodeIds) _model.Mesh.SetFreeReferencePointNodeIds(referencePoint);
             //
             _model.Mesh.ReferencePoints.Add(referencePoint.Name, referencePoint);
             //
             _form.AddTreeNode(ViewGeometryModelResults.Model, referencePoint, null);
             //
-            FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
+            FeModelUpdate(FreeModelReferencePointNodeIds(referencePoint) | UpdateType.Check | UpdateType.RedrawSymbols);
         }
         public FeReferencePoint GetModelReferencePoint(string referencePointName)
         {
@@ -15745,11 +15760,21 @@ namespace PrePoMax
         {
             ReselectModelReferencePoint(newReferencePoint); // in order for the Regenerate history to work perform the selection
             //
+            // Compatibility v3.0.0
+            if (!newReferencePoint.HasNodeIds)
+            {
+                FeReferencePoint oldReferencePoint = _model.Mesh.ReferencePoints[oldReferencePointName];
+                newReferencePoint.RefNodeId = oldReferencePoint.RefNodeId;
+                newReferencePoint.RotNodeId = oldReferencePoint.RotNodeId;
+            }
+            //
             _model.Mesh.ReferencePoints.Replace(oldReferencePointName, newReferencePoint.Name, newReferencePoint);
             //
             _form.UpdateTreeNode(ViewGeometryModelResults.Model, oldReferencePointName, newReferencePoint, null);
             //
-            if (feModelUpdate) FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
+            UpdateType updateType = FreeModelReferencePointNodeIds(newReferencePoint);
+            if (feModelUpdate) FeModelUpdate(updateType | UpdateType.Check | UpdateType.RedrawSymbols);
+            else if (updateType != UpdateType.None) FeModelUpdate(updateType);
         }
         public void RenameModelReferencePoint(string oldReferencePointName, string newReferencePointName)
         {
@@ -15768,6 +15793,7 @@ namespace PrePoMax
                     newReferencePoint = _model.Mesh.ReferencePoints[name].DeepClone();
                     newReferencePoint.Name = NamedClass.GetNameWithoutLastValue(newReferencePoint.Name);
                     newReferencePoint.Name = _model.Mesh.ReferencePoints.GetNextNumberedKey(newReferencePoint.Name);
+                    _model.Mesh.SetFreeReferencePointNodeIds(newReferencePoint);
                     AddModelReferencePoint(newReferencePoint);
                     PlaceDuplicatedOrderedDictionaryItem(_model.Mesh.ReferencePoints, name, newReferencePoint,
                                                          ViewGeometryModelResults.Model);
@@ -15788,6 +15814,16 @@ namespace PrePoMax
             FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
         }
         // Update
+        private UpdateType FreeModelReferencePointNodeIds(FeReferencePoint referencePoint)
+        {
+            // Regenerate may build a different mesh before it adds a reference point with fixed node ids
+            if (!_model.Mesh.IsReferencePointNodeIdUsedByMesh(referencePoint)) return UpdateType.None;
+            //
+            _model.Mesh.RenumberNodes(1);
+            _form.WriteDataToOutput("The mesh nodes were renumbered to free the node ids of the reference point " +
+                                    referencePoint.Name + ".");
+            return UpdateType.DrawModel;
+        }
         private void ReselectModelReferencePoint(FeReferencePoint referencePoint)
         {
             if (referencePoint.CreationData != null)

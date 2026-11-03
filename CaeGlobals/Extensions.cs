@@ -182,12 +182,17 @@ namespace CaeGlobals
         }
         public static int FindFreeIntervalOfKeys<T>(this Dictionary<int, T> dic, int numOfKeys, int maxKey)
         {
+            return dic.FindFreeIntervalOfKeys(numOfKeys, maxKey, null);
+        }
+        public static int FindFreeIntervalOfKeys<T>(this Dictionary<int, T> dic, int numOfKeys, int maxKey,
+                                                    HashSet<int> reservedKeys)
+        {
             int count = 0;
             int firstId = 1;                    // start at 1
             //
             for (int i = 1; i <= maxKey; i++)   // start at 1
             {
-                if (dic.ContainsKey(i))
+                if (dic.ContainsKey(i) || (reservedKeys != null && reservedKeys.Contains(i)))
                 {
                     count = 0;
                     firstId = i + 1;
@@ -244,6 +249,23 @@ namespace CaeGlobals
                         System.Reflection.BindingFlags.Instance);
 
             aProp.SetValue(c, true, null);
+        }
+        public static void SetLocationInsideWorkingArea(this Form form, Point location)
+        {
+            Rectangle workingArea = Screen.FromPoint(location).WorkingArea;
+            Size size = new Size(Math.Min(form.Width, workingArea.Width), Math.Min(form.Height, workingArea.Height));
+            //
+            if (size != form.Size)
+            {
+                form.MinimumSize = new Size(Math.Min(form.MinimumSize.Width, size.Width),
+                                            Math.Min(form.MinimumSize.Height, size.Height));
+                form.Size = size;
+            }
+            //
+            location.X = Math.Max(workingArea.Left, Math.Min(location.X, workingArea.Right - form.Width));
+            location.Y = Math.Max(workingArea.Top, Math.Min(location.Y, workingArea.Bottom - form.Height));
+            //
+            if (form.Location != location) form.Location = location;
         }
         // Int array
         public static string ToShortString(this int[] intArray, int numOfItems = 10)

@@ -2414,7 +2414,8 @@ namespace CaeModel
             Dictionary<string, Dictionary<int, int>> partNameNewEdgeIdOldEdgeId = new Dictionary<string, Dictionary<int, int>>();
             FeMesh mmgMesh = MmgFileReader.Read(fileName, ElementsToImport.Shell,
                                                                 MeshRepresentation.Mesh, convertToSecondOrder,
-                                                                _mesh.MaxNodeId + 1, _mesh.MaxElementId + 1,
+                                                                _mesh.GetMaxNodeIdWithReferencePoints() + 1,
+                                                                _mesh.MaxElementId + 1,
                                                                 borderNodes, midNodes,
                                                                 epsilon * max,
                                                                 partNameNewSurfIdOldSurfId, partNameNewEdgeIdOldEdgeId);
@@ -2556,6 +2557,8 @@ namespace CaeModel
             //
             CalculixUserKeywords = indexedUserKeywords;
             //
+            AssignMissingReferencePointNodeIds();
+            //
             return InpFileReader.Errors;
         }
         public List<string> ImportMaterialsFromInpFile(string fileName, Action<string> WriteDataToOutput)
@@ -2644,6 +2647,30 @@ namespace CaeModel
             }
             _mesh.AddMesh(mesh, reservedPartNames, GetReservedPartIds(), forceRenameParts, renumberNodesAndElements,
                           updateNodeIdElementIds);
+        }
+        public void AssignMissingReferencePointNodeIds()
+        {
+            if (_mesh == null || _mesh.ReferencePoints == null) return;
+            // Number the reference points the way the input file writer numbered them before the node ids were stored
+            HashSet<string> rigidBodyReferencePointNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in _constraints)
+            {
+                if (entry.Value.Active && entry.Value is RigidBody rigidBody && rigidBody.ReferencePointName != null)
+                    rigidBodyReferencePointNames.Add(rigidBody.ReferencePointName);
+            }
+            //
+            int maxNodeId = _mesh.GetMaxNodeIdWithReferencePoints();
+            List<FeReferencePoint> referencePointsWithoutRotNodeId = new List<FeReferencePoint>();
+            foreach (var entry in _mesh.ReferencePoints)
+            {
+                if (entry.Value.RefNodeId <= 0) entry.Value.RefNodeId = ++maxNodeId;
+                if (entry.Value.RotNodeId <= 0)
+                {
+                    if (rigidBodyReferencePointNames.Contains(entry.Key)) entry.Value.RotNodeId = ++maxNodeId;
+                    else referencePointsWithoutRotNodeId.Add(entry.Value);
+                }
+            }
+            foreach (var referencePoint in referencePointsWithoutRotNodeId) referencePoint.RotNodeId = ++maxNodeId;
         }
         // Update                                                                                   
         public void UpdateGeometryPartMassPropertiesFromVisFile(string visFileName, string partName)

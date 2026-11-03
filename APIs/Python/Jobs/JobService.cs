@@ -318,7 +318,7 @@ namespace APIs.Python
         }
         public void ValidateName(string name, string allowedExistingName)
         {
-            PythonNameComparer.ValidateFormat(name, "name", allowedExistingName);
+            PythonNameComparer.ValidateFormat(name, "name", allowedExistingName, AnalysisJob.GetAdditionalNameCharacters());
             // Renaming an analysis by case only keeps its own name, which no other analysis holds
             if (allowedExistingName != null && PythonNameComparer.AreSame(name, allowedExistingName)) return;
             //

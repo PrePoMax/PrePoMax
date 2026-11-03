@@ -174,7 +174,7 @@ namespace FileInOut.Output
             {
                 // Only keywords from the model, not user keywords
                 // Always add a title keyword to get all possible keyword types to the keyword editor
-                int maxNodeId = model.Mesh.MaxNodeId;
+                int maxNodeId = model.Mesh.GetMaxNodeIdWithReferencePoints();
                 int maxElementId = model.Mesh.MaxElementId;
                 List<FeNode> additionalNodes = new List<FeNode>();
                 List<FeNodeSet> additionalNodeSets = new List<FeNodeSet>();
@@ -367,40 +367,44 @@ namespace FileInOut.Output
                 }
                 // Fill reference point nodes
                 int id = maxNodeId;
+                int refNodeId;
+                int rotNodeId;
                 FeReferencePoint rp;
                 foreach (var entry in model.Mesh.ReferencePoints)
                 {
                     rp = entry.Value;
                     bool usedByRigidBody = rigidBodyReferencePointNames.Contains(rp.Name);
                     bool usedByCoupling = couplingReferencePointNames.Contains(rp.Name);
+                    if (rp.HasNodeIds) model.Mesh.CheckReferencePointNodeIds(rp, rp.Name);
+                    // A reference point without node ids is numbered as before the node ids were stored
+                    refNodeId = rp.RefNodeId > 0 ? rp.RefNodeId : ++id;
                     // Check name
-                    rp.RefNodeSetName = GetReferencePointNodeSetName(rp.Name, FeReferencePoint.RefName + id + 1);
+                    rp.RefNodeSetName = GetReferencePointNodeSetName(rp.Name, FeReferencePoint.RefName + refNodeId);
                     if (allNodeSetNames.Contains(rp.RefNodeSetName))
                         rp.RefNodeSetName = allNodeSetNames.GetNextNumberedKey(rp.RefNodeSetName);
-                    rpNodeSet = new FeNodeSet(rp.RefNodeSetName, new int[] { id + 1 });
+                    rpNodeSet = new FeNodeSet(rp.RefNodeSetName, new int[] { refNodeId });
                     additionalNodeSets.Add(rpNodeSet);
                     allNodeSetNames.Add(rpNodeSet.Name);
                     //
                     CalReferencePoint calReferencePoint = new CalReferencePoint
                     {
-                        ReferenceNodeId = id + 1,
+                        ReferenceNodeId = refNodeId,
                         ReferenceNodeSetName = rp.RefNodeSetName,
                         UsedByRigidBody = usedByRigidBody,
                         UsedByCoupling = usedByCoupling
                     };
-                    id++;
                     // Only a rigid body needs the auxiliary CalculiX rotation node.
                     if (usedByRigidBody)
                     {
-                        rp.RotNodeSetName = GetReferencePointNodeSetName(rp.Name, FeReferencePoint.RotName + id + 1);
+                        rotNodeId = rp.RotNodeId > 0 ? rp.RotNodeId : ++id;
+                        rp.RotNodeSetName = GetReferencePointNodeSetName(rp.Name, FeReferencePoint.RotName + rotNodeId);
                         if (allNodeSetNames.Contains(rp.RotNodeSetName))
                             rp.RotNodeSetName = allNodeSetNames.GetNextNumberedKey(rp.RotNodeSetName);
-                        rpNodeSet = new FeNodeSet(rp.RotNodeSetName, new int[] { id + 1 });
+                        rpNodeSet = new FeNodeSet(rp.RotNodeSetName, new int[] { rotNodeId });
                         additionalNodeSets.Add(rpNodeSet);
                         allNodeSetNames.Add(rpNodeSet.Name);
-                        calReferencePoint.RotationNodeId = id + 1;
+                        calReferencePoint.RotationNodeId = rotNodeId;
                         calReferencePoint.RotationNodeSetName = rp.RotNodeSetName;
-                        id++;
                     }
                     else rp.RotNodeSetName = null;
                     referencePoints.Add(entry.Key, calReferencePoint);

@@ -205,6 +205,9 @@ namespace PrePoMax.Forms
                 else  ReferencePoint = new FeReferencePoint(GetReferencePointName(), 0, 0, 0);
                 //
                 ReferencePoint.Color = _controller.Settings.Pre.ConstraintSymbolColor;
+                //
+                if (_controller.CurrentView == ViewGeometryModelResults.Model)
+                    _controller.Model.Mesh.SetFreeReferencePointNodeIds(ReferencePoint);
             }
             // Edit existing reference point
             else
@@ -231,6 +234,7 @@ namespace PrePoMax.Forms
             }
             //
             _viewReferencePoint.PopulateDropDownLists(_nodeSetNames, _surfaceNames);
+            _viewReferencePoint.SetNodeIdsBrowsable(_controller.CurrentView == ViewGeometryModelResults.Model);
             //
             propertyGrid.SelectedObject = _viewReferencePoint;
             //

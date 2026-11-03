@@ -83,6 +83,12 @@ namespace PrePoMax.Python.Journal
                 arguments.Add("name_visible=" + PythonValueFormatter.Format(referencePoint.NameVisible));
             if (replace || referencePoint.Color.ToArgb() != defaults.Color.ToArgb())
                 arguments.Add("color=" + PythonValueFormatter.Channels(referencePoint.Color));
+            // User keywords refer to the node ids, so a replay must not number the point anew
+            if (referencePoint.HasNodeIds)
+            {
+                arguments.Add("node_id=" + PythonValueFormatter.Format(referencePoint.RefNodeId));
+                arguments.Add("rotation_node_id=" + PythonValueFormatter.Format(referencePoint.RotNodeId));
+            }
         }
     }
 }

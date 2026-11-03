@@ -63,7 +63,8 @@ The root object available in the Python console is `pmx`.
   name space of their own; the parts, sets, surfaces and reference points share one.
 - A name given to `add_*`, `replace_*` or `rename` is checked **before anything is recorded**, and is refused when
   it is empty, starts or ends with a space, contains a space or a character other than letters, digits and
-  `- _ ( )`, or contains no letter. Materials and element sets also take `@`; parameter names do not take `-`.
+  `- _ ( )`, or contains no letter. Materials and element sets also take `@`, analyses take `+`; parameter names do
+  not take `-`.
   The name an item already carries is not checked again, so an item named by an import can still be replaced.
 - A value the dialog takes as an expression takes a number or an equation string. A number is passed on as the
   shortest text that reads back as the same double, so nothing is lost on the way in; the model itself then keeps a
@@ -1770,12 +1771,12 @@ and `get_face_ids()` (an `IntList`).
 
 | Member | Description |
 | --- | --- |
-| `add(name, coordinates, name_visible=None, color=None)` | Creates a reference point at `[x, y, z]`. In a 2D model the point is a 2D point, as the dialog makes it, and a non-zero `z` is refused. |
-| `add_from_selection(name, created_from, selection, name_visible=None, color=None)` | Creates a reference point whose coordinates the mesh computes from selected points. |
-| `add_from_region(name, created_from, region_type, region_name, name_visible=None, color=None)` | Creates a reference point whose coordinates the mesh computes from a named region. |
-| `replace(old_name, name=None, coordinates=None, name_visible=None, color=None)` | Replaces an existing reference point. Coordinates that are not given are kept, and giving them turns the point back into a coordinate point. |
-| `replace_from_selection(old_name, name=None, created_from=None, selection=None, name_visible=None, color=None)` | Replaces a reference point by selected mesh points. |
-| `replace_from_region(old_name, name=None, created_from=None, region_type=None, region_name=None, name_visible=None, color=None)` | Replaces a reference point by a named region. |
+| `add(name, coordinates, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Creates a reference point at `[x, y, z]`. In a 2D model the point is a 2D point, as the dialog makes it, and a non-zero `z` is refused. |
+| `add_from_selection(name, created_from, selection, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Creates a reference point whose coordinates the mesh computes from selected points. |
+| `add_from_region(name, created_from, region_type, region_name, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Creates a reference point whose coordinates the mesh computes from a named region. |
+| `replace(old_name, name=None, coordinates=None, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Replaces an existing reference point. Coordinates that are not given are kept, and giving them turns the point back into a coordinate point. |
+| `replace_from_selection(old_name, name=None, created_from=None, selection=None, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Replaces a reference point by selected mesh points. |
+| `replace_from_region(old_name, name=None, created_from=None, region_type=None, region_name=None, name_visible=None, color=None, node_id=None, rotation_node_id=None)` | Replaces a reference point by a named region. |
 | `hide(names)`, `show(names)` | Reference point visibility. |
 
 `created_from` decides which of the two add methods applies. The three point modes `OnPoint`,
@@ -1787,7 +1788,12 @@ type is `NodeSetName` or `SurfaceName`.
 `[red, green, blue]`, `[red, green, blue, alpha]` or a color name. Both are part of the stored definition and keep
 their defaults when they are not given.
 
-`ReferencePoint` exposes `name`, `created_from`, `name_visible`, `color`, `visible`, `valid`,
+`node_id` and `rotation_node_id` are the ids of the reference node and of the rotation node a rigid body uses in the
+input file. They are fixed, so user keywords can refer to them: an add takes the next free ids above the mesh and the
+other reference points for the ones it is not given, a replace keeps the stored ones, and the mesh never gives a node
+either id. An id a mesh node or another reference point holds is refused, as are two equal ids.
+
+`ReferencePoint` exposes `name`, `created_from`, `name_visible`, `color`, `node_id`, `rotation_node_id`, `visible`, `valid`,
 `get_coordinates()` (`[x, y, z]`), `get_equations()` (a `dict[str, list]` with the coordinates under
 `coordinates`, the argument of `add` and `replace`, when any of them was entered as an expression; its plain
 coordinates are numbers, and a point without an expression returns an empty `dict`) and `get_construction()` (a

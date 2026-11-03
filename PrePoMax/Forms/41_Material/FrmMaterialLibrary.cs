@@ -498,7 +498,7 @@ namespace PrePoMax.Forms
         {
             if (cbPreview.Checked)
             {
-                _frmMaterial.Location = new Point(Location.X + Width - 12, Location.Y);
+                _frmMaterial.SetLocationInsideWorkingArea(new Point(Location.X + Width - 12, Location.Y));
                 _frmMaterial.Show(this);
             }
             else _frmMaterial.Hide();
