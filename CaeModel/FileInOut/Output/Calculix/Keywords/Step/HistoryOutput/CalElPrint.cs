@@ -53,7 +53,7 @@ namespace FileInOut.Output.Calculix
             if (_elementHistoryOutput.TotalsType == TotalsTypeEnum.Yes) totals = ", Totals=Yes";
             else if (_elementHistoryOutput.TotalsType == TotalsTypeEnum.Only) totals = ", Totals=Only";
             string global = OutputGlobal && _elementHistoryOutput.Global ? ", Global=Yes" : "";
-            string frequency = OutputFrequency ? ", Frequency=" + _outputFrequency : "";
+            string frequency = OutputFrequency && _outputFrequency > 0 ? ", Frequency=" + _outputFrequency : "";
             //
             return string.Format("*El print{0}{1}{2}{3}{4}", regionName, totals, global, frequency, Environment.NewLine);
         }

@@ -61,7 +61,7 @@ namespace FileInOut.Output.Calculix
             string masterSlave = "";
             if (_contactHistoryOutput.Variables.HasFlag(ContactHistoryVariable.CF))
                 masterSlave = ", Master=" + _masterSurfaceName + ", Slave=" + _slaveSurfaceName;
-            string frequency = OutputFrequency ? ", Frequency=" + _outputFrequency : "";
+            string frequency = OutputFrequency && _outputFrequency > 0 ? ", Frequency=" + _outputFrequency : "";
             //
             return string.Format("*Contact print{0}{1}{2}{3}", totals, masterSlave, frequency, Environment.NewLine);
         }
