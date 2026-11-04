@@ -16,7 +16,7 @@ only when that mesher's binary is actually present in the base folder.
 | Gmsh 4.13, patched | `lib\gmsh-4.13.dll`, vendored in `ThirdParty/gmsh-4.13.0-Windows64-sdk/` | GPL-2.0-or-later, with an exception permitting combination with Netgen, METIS, OpenCASCADE and ParaView | `share/doc/gmsh/LICENSE.txt` in the vendored SDK under `ThirdParty/` |
 | OpenCASCADE 7.7.0 | statically linked into `lib\gmsh-4.13.dll` | LGPL-2.1 with the Open CASCADE exception | github.com/Open-Cascade-SAS/OCCT |
 | Mmg | `Meshers\Mmg\mmgs.exe` (5.5.2), `Meshers\Mmg\mmg3d.exe` (5.7.0), vendored in `ThirdParty/mmg/` | LGPL-3.0-or-later | `LICENSE` at github.com/MmgTools/mmg |
-| QuadWild-BiMDF 0.0.2, modified | `Meshers\QuadWild\quadwild.exe`, `Meshers\QuadWild\quad_from_patches.exe`, vendored in `ThirdParty/quadwild-bimdf/` | GPL-3.0 | `LICENSE` at github.com/cgg-bern/quadwild-bimdf |
+| QuadWild-BiMDF 0.0.2, modified | `Meshers\QuadWild\quadwild.exe`, `Meshers\QuadWild\quad_from_patches.exe`, vendored in `ThirdParty/quadwild-bimdf/` | GPL-3.0 | `LICENSE` at github.com/cgg-bern/quadwild-bimdf; source of the modified build at github.com/PrePoMax/QuadWild |
 | NetGenMesher | `Meshers\Netgen\NetGenMesher.exe`, vendored in `ThirdParty/netgen/` | LGPL-2.1 (own build, published with its Netgen port) | `LICENSE` at github.com/PrePoMax/NetgenMesher |
 | Netgen 5.3.1, ported to OpenCASCADE 8.0.1 | `Meshers\Netgen\nglib.dll` | LGPL-2.1 | `LICENSE` at github.com/NGSolve/netgen |
 | OpenCASCADE 8.0.1 | `Meshers\Netgen\TK*.dll` | LGPL-2.1 with the Open CASCADE exception | github.com/Open-Cascade-SAS/OCCT |
@@ -59,7 +59,8 @@ GPL-3 section 6 and LGPL-3 require a route to the source for the binaries that a
 component above, record the exact upstream version shipped and keep the matching source archive, or
 publish a written offer with the release. The versions currently shipped are listed in the table.
 
-Gmsh and Netgen are shipped as modified binaries, so their corresponding source is not an upstream
-release: for Gmsh it is the branch named under "Gmsh build" above, for Netgen and NetGenMesher the
-repository named under "Netgen runtime set". Both have to stay published for as long as the binaries
-are conveyed.
+Gmsh, Netgen and QuadWild are shipped as modified binaries, so their corresponding source is not an
+upstream release: for Gmsh it is the branch named under "Gmsh build" above, for Netgen and
+NetGenMesher the repository named under "Netgen runtime set", and for QuadWild
+`github.com/PrePoMax/QuadWild`. All of them have to stay published for as long as the binaries are
+conveyed.

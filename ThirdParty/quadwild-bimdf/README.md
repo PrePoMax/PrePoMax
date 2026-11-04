@@ -1,7 +1,8 @@
 # QuadWild-BiMDF runtime
 
 This directory vendors Windows binaries of a modified QuadWild-BiMDF, built from a
-local fork of version 0.0.2 (see NOTICE.md for the changes). README_release.md is the
+fork of version 0.0.2 published at https://github.com/PrePoMax/QuadWild (see NOTICE.md for the
+changes). README_release.md is the
 upstream 0.0.2 release note. The directory contains:
 
 - quadwild.exe
