@@ -31,7 +31,7 @@ raises no license-compatibility question. Mmg's own LICENSE requires that both `
 ## Gmsh build
 
 `lib\gmsh-4.13.dll` is no longer the binary from the upstream Gmsh SDK. It is built from patched
-Gmsh sources, published at `github.com/PrePoMax/gmsh` on the branch `prepomax-quadqs-transfinite`, so
+Gmsh sources, published at `github.com/PrePoMax/Gmsh` on the branch `prepomax-quadqs-transfinite`, so
 that the quasi-structured quad algorithm leaves alone the element counts a swept mesh pins on its
 curves, a quadrangle is never split into triangles that fold over each other, and a curve is sized by
 the curvature of its faces in its own direction rather than by their largest curvature, which made a
