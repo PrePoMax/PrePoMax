@@ -42,8 +42,9 @@ latest released version of PrePoMax's base folder. Then set the working folder a
 PrePoMax is licensed under the GNU General Public License v3 - see [LICENSE](LICENSE).
 
 It also ships third-party mesher binaries that are not built from this repository: Gmsh
-(GPL-2.0-or-later, with an exception), Mmg (LGPL-3.0-or-later), and NetGenMesher (GPL-3.0), which in
-turn links Netgen, OpenCASCADE and pthreads-win32 (all LGPL-2.1). Their license texts live in
+(GPL-2.0-or-later, with an exception), Mmg (LGPL-3.0-or-later), and NetGenMesher (LGPL-2.1,
+https://github.com/PrePoMax/NetgenMesher), which in turn links Netgen, OpenCASCADE and pthreads-win32
+(all LGPL-2.1). Their license texts live in
 [Licenses/](Licenses/) and the build copies them into the output folder next to the binaries they
 cover, so a build from this repository carries them automatically.
 

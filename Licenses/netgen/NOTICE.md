@@ -2,15 +2,16 @@
 
 ## NetGenMesher.exe
 
-Built from `C:\Pc\Programiranje\NetgenMesher` (not part of this repository) and licensed under the
-**GNU General Public License v3**, the same license as PrePoMax itself. The license text is the
-`LICENSE` file in the base folder root.
+Built, together with `nglib.dll`, from https://github.com/PrePoMax/NetgenMesher, which holds
+NetGenMesher and its port of Netgen 5.3.1 to OpenCASCADE 8.0.1, and licensed under the
+**GNU Lesser General Public License v2.1**, the license of Netgen. The license text is
+`LGPL-2.1.txt` beside this notice.
 
 ## Libraries it links
 
 | Component | Shipped as | License | Text |
 |---|---|---|---|
-| Netgen 5.3.1 | `nglib.dll` | LGPL-2.1 | `LGPL-2.1.txt` |
+| Netgen 5.3.1, ported to OpenCASCADE 8.0.1 | `nglib.dll` | LGPL-2.1 | `LGPL-2.1.txt` |
 | OpenCASCADE Technology 8.0.1 | 29 x `TK*.dll` | LGPL-2.1 with the Open CASCADE exception | `LGPL-2.1-OCCT.txt`, `OCCT_LGPL_EXCEPTION.txt` |
 | pthreads-win32 2.9.1 | `pthreadVC2.dll` | LGPL-2.1 | `LGPL-2.1-pthreads-win32.txt` |
 | zlib 1.2.11 | `zlib.dll` | zlib License | `ZLIB-LICENSE.txt` |
@@ -20,7 +21,8 @@ The Netgen and OpenCASCADE texts were taken from their upstream repositories (NG
 Open-Cascade-SAS/OCCT); Netgen 5.3.1's own source tarball carries no license file. The pthreads-win32
 text is the `COPYING.LIB` from the prebuilt distribution actually used for the build.
 
-GPL-3 permits linking LGPL-2.1 libraries, so NetGenMesher.exe being GPL-3 raises no conflict.
+NetGenMesher.exe and the libraries it links are all under LGPL-2.1 or more permissive terms, and it
+runs as a separate process of PrePoMax, so its license raises no conflict with PrePoMax's GPL-3.
 
 ## Runtime closure
 

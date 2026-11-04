@@ -17,8 +17,8 @@ only when that mesher's binary is actually present in the base folder.
 | OpenCASCADE 7.7.0 | statically linked into `lib\gmsh-4.13.dll` | LGPL-2.1 with the Open CASCADE exception | github.com/Open-Cascade-SAS/OCCT |
 | Mmg | `Meshers\Mmg\mmgs.exe` (5.5.2), `Meshers\Mmg\mmg3d.exe` (5.7.0), vendored in `ThirdParty/mmg/` | LGPL-3.0-or-later | `LICENSE` at github.com/MmgTools/mmg |
 | QuadWild-BiMDF 0.0.2, modified | `Meshers\QuadWild\quadwild.exe`, `Meshers\QuadWild\quad_from_patches.exe`, vendored in `ThirdParty/quadwild-bimdf/` | GPL-3.0 | `LICENSE` at github.com/cgg-bern/quadwild-bimdf |
-| NetGenMesher | `Meshers\Netgen\NetGenMesher.exe`, vendored in `ThirdParty/netgen/` | GPL-3.0 (own build, same license as PrePoMax) | the author |
-| Netgen 5.3.1 | `Meshers\Netgen\nglib.dll` | LGPL-2.1 | `LICENSE` at github.com/NGSolve/netgen |
+| NetGenMesher | `Meshers\Netgen\NetGenMesher.exe`, vendored in `ThirdParty/netgen/` | LGPL-2.1 (own build, published with its Netgen port) | `LICENSE` at github.com/PrePoMax/NetgenMesher |
+| Netgen 5.3.1, ported to OpenCASCADE 8.0.1 | `Meshers\Netgen\nglib.dll` | LGPL-2.1 | `LICENSE` at github.com/NGSolve/netgen |
 | OpenCASCADE 8.0.1 | `Meshers\Netgen\TK*.dll` | LGPL-2.1 with the Open CASCADE exception | github.com/Open-Cascade-SAS/OCCT |
 | pthreads-win32 2.9.1 | `Meshers\Netgen\pthreadVC2.dll` | LGPL-2.1 | `COPYING.LIB` in the prebuilt package used for the build |
 | zlib 1.2.11 | `Meshers\Netgen\zlib.dll` | zlib License | license notice in the vendored `zlib.h` |
@@ -47,8 +47,9 @@ where the upstream binary used several.
 
 ## Netgen runtime set
 
-`NetGenMesher.exe` is the author's own build and is GPL-3, and the libraries it links are covered
-above. OpenCASCADE 8.0.1 was built locally with its optional image, video, visualization and
+`NetGenMesher.exe` and `nglib.dll` are the author's own build from `github.com/PrePoMax/NetgenMesher`,
+which publishes NetGenMesher together with its port of Netgen 5.3.1 to OpenCASCADE 8.0.1 under
+Netgen's LGPL-2.1, and the libraries they link are covered above. OpenCASCADE 8.0.1 was built locally with its optional image, video, visualization and
 parallel-runtime dependencies disabled, so the former FreeImage, FFmpeg, FreeType, jemalloc,
 OpenVR and TBB dlls no longer ship. See [netgen/NOTICE.md](netgen/NOTICE.md).
 
@@ -58,6 +59,7 @@ GPL-3 section 6 and LGPL-3 require a route to the source for the binaries that a
 component above, record the exact upstream version shipped and keep the matching source archive, or
 publish a written offer with the release. The versions currently shipped are listed in the table.
 
-Gmsh is the one component shipped as a modified binary, so its corresponding source is the branch
-named under "Gmsh build" above rather than an upstream release, and that branch has to stay
-published for as long as the binary is conveyed.
+Gmsh and Netgen are shipped as modified binaries, so their corresponding source is not an upstream
+release: for Gmsh it is the branch named under "Gmsh build" above, for Netgen and NetGenMesher the
+repository named under "Netgen runtime set". Both have to stay published for as long as the binaries
+are conveyed.

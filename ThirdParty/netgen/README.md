@@ -1,13 +1,13 @@
 # NetGenMesher (vendored binaries)
 
 The meshing and CAD utility PrePoMax shells out to for Netgen meshing and all OpenCASCADE geometry
-operations. Built from `C:\Pc\Programiranje\NetgenMesher` (not part of this repository), so a clean
-checkout could not otherwise produce a working `Meshers\Netgen`.
+operations. Built from https://github.com/PrePoMax/NetgenMesher (not part of this repository), so a
+clean checkout could not otherwise produce a working `Meshers\Netgen`.
 
 | Component | Files | License |
 |---|---|---|
-| NetGenMesher | `NetGenMesher.exe` | GPL-3.0 - own build, same license as PrePoMax |
-| Netgen 5.3.1 | `nglib.dll` | LGPL-2.1 |
+| NetGenMesher | `NetGenMesher.exe` | LGPL-2.1 - own build, published with its Netgen port |
+| Netgen 5.3.1, ported to OpenCASCADE 8.0.1 | `nglib.dll` | LGPL-2.1 |
 | OpenCASCADE 8.0.1 | 29 x `TK*.dll` | LGPL-2.1 with the Open CASCADE exception |
 | pthreads-win32 2.9.1 | `pthreadVC2.dll` | LGPL-2.1 |
 | zlib 1.2.11 | `zlib.dll` | zlib License |
