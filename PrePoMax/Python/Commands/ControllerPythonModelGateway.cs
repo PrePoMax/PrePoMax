@@ -590,8 +590,9 @@ namespace PrePoMax.Python
         public string[] AddSearchedContactPairs(List<MasterSlaveItem> masterSlaveItems, bool tie, bool adjust,
                                                 double distance, string surfaceInteractionName, ContactPairMethod method)
         {
-            return _controller.AutoCreateSearchedContactPairs(masterSlaveItems, tie, adjust, distance,
-                                                              surfaceInteractionName, method);
+            return _controller.AddSearchedContactPairsCommand(
+                _controller.CreateSearchContactPairRows(masterSlaveItems, tie, adjust, distance, surfaceInteractionName,
+                                                        method));
         }
         //
         public void AddNodeSet(FeNodeSet nodeSet)

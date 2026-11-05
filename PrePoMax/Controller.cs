@@ -17146,14 +17146,16 @@ namespace PrePoMax
         }
 
         // Auto create
-        public string[] AutoCreateTiedPairs(List<Forms.SearchContactPair> contactPairs)
+        // The names are reserved as the items are made, because none of them is in the model before all are added
+        private void CreateSearchedTieItems(List<Forms.SearchContactPair> contactPairs, List<NamedClass> items)
         {
-            List<string> createdNames = new List<string>();
             if (contactPairs != null)
             {
                 string name;
                 Tie tie;
                 bool adjust;
+                HashSet<string> surfaceNames = new HashSet<string>(_model.Mesh.Surfaces.Keys, _model.Mesh.Surfaces.Comparer);
+                HashSet<string> constraintNames = new HashSet<string>(_model.Constraints.Keys, _model.Constraints.Comparer);
                 Dictionary<string, int> nameCounter = new Dictionary<string, int>();
                 foreach (var contactPair in contactPairs)
                 {
@@ -17165,8 +17167,8 @@ namespace PrePoMax
                     if (contactPair.MasterSlaveItem.Unresolved)
                     {
                         name = contactPair.Name;
-                        if (nameCounter[name] > 1 || _model.Mesh.Surfaces.ContainsKey(name))
-                            name = _model.Mesh.Surfaces.GetNextNumberedKey(name);
+                        if (nameCounter[name] > 1 || surfaceNames.Contains(name)) name = surfaceNames.GetNextNumberedKey(name);
+                        surfaceNames.Add(name);
                         //
                         FeSurface surface = new FeSurface(name);
                         surface.CreationData = new Selection();
@@ -17176,14 +17178,14 @@ namespace PrePoMax
                                                                       true));
                         surface.CreationData = GetMouseSelectionFromSelectionNodeIds(surface.CreationData);
                         //
-                        AddSurfaceCommand(surface, false);
-                        createdNames.Add(name);
+                        items.Add(surface);
                     }
                     else
                     {
                         name = contactPair.Name;
-                        if (nameCounter[name] > 1 || _model.Constraints.ContainsKey(name))
-                            name = _model.Constraints.GetNextNumberedKey(name);
+                        if (nameCounter[name] > 1 || constraintNames.Contains(name))
+                            name = constraintNames.GetNextNumberedKey(name);
+                        constraintNames.Add(name);
                         //
                         adjust = contactPair.Adjust == Forms.SearchContactPairAdjust.Yes;
                         bool twoD = _model.Properties.ModelSpace.IsTwoD();
@@ -17208,14 +17210,10 @@ namespace PrePoMax
                         tie.SlaveCreationData = GetMouseSelectionFromSelectionNodeIds(tie.SlaveCreationData);
                         tie.SlaveCreationIds = new int[] { 1 };
                         //
-                        AddConstraintCommand(tie, false);
-                        createdNames.Add(name);
+                        items.Add(tie);
                     }
                 }
-                //
-                FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
             }
-            return createdNames.ToArray();
         }
 
         #endregion #################################################################################################################
@@ -17352,6 +17350,30 @@ namespace PrePoMax
         {
             Commands.CRemoveContactPairs comm = new Commands.CRemoveContactPairs(contactPairNames);
             _commands.AddAndExecute(comm);
+        }
+        // Everything one OK of the Search Contact Pairs dialog adds is one command, so the history is written once
+        public string[] AddSearchedContactPairsCommand(List<SearchContactPair> contactPairs)
+        {
+            List<SearchContactPair> tiedContactPairs = new List<SearchContactPair>();
+            List<SearchContactPair> contactContactPairs = new List<SearchContactPair>();
+            foreach (SearchContactPair contactPair in contactPairs)
+            {
+                if (contactPair.Type == SearchContactPairType.Tie) tiedContactPairs.Add(contactPair);
+                else if (contactPair.Type == SearchContactPairType.Contact) contactContactPairs.Add(contactPair);
+                else throw new NotSupportedException();
+            }
+            //
+            List<NamedClass> items = new List<NamedClass>();
+            CreateSearchedTieItems(tiedContactPairs, items);
+            CreateSearchedContactPairItems(contactContactPairs, items);
+            if (items.Count == 0) return new string[0];
+            //
+            CAddSearchedContactPairs comm = new CAddSearchedContactPairs(items.ToArray());
+            _commands.AddAndExecute(comm);
+            //
+            string[] names = new string[items.Count];
+            for (int i = 0; i < names.Length; i++) names[i] = items[i].Name;
+            return names;
         }
         //******************************************************************************************
         public string[] GetContactPairNames()
@@ -17666,15 +17688,44 @@ namespace PrePoMax
                 RemoveSurfaces(new string[] { contactPair.SlaveRegionName }, false);
         }
         // Auto create
-        public string[] AutoCreateContactPairs(List<SearchContactPair> contactPairs)
+        public void AddSearchedContactPairs(NamedClass[] items)
         {
-            List<string> createdNames = new List<string>();
+            // A pick that no longer finds its face after a geometry change fails one item, not the ones after it
+            List<string> errors = new List<string>();
+            BeginUpdateBatch();
+            try
+            {
+                foreach (NamedClass item in items)
+                {
+                    try
+                    {
+                        if (item is FeSurface surface) AddSurface(surface, false);
+                        else if (item is CaeModel.Constraint constraint) AddConstraint(constraint, false);
+                        else if (item is ContactPair contactPair) AddContactPair(contactPair, false);
+                        else throw new NotSupportedException();
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(item.Name + ": " + ex.Message);
+                    }
+                }
+                FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
+            }
+            finally
+            {
+                EndUpdateBatch();
+            }
+            foreach (string error in errors) _form.WriteErrorToOutput("Add searched contact pairs: " + error);
+        }
+        private void CreateSearchedContactPairItems(List<SearchContactPair> contactPairs, List<NamedClass> items)
+        {
             if (contactPairs != null)
             {
                 string name;
                 bool adjust;
                 CaeModel.ContactPairMethod method;
                 ContactPair contactPairToAdd;
+                HashSet<string> contactPairNames = new HashSet<string>(_model.ContactPairs.Keys, _model.ContactPairs.Comparer);
                 Dictionary<string, int> nameCounter = new Dictionary<string, int>();
                 foreach (var contactPair in contactPairs)
                 {
@@ -17684,8 +17735,9 @@ namespace PrePoMax
                 foreach (var contactPair in contactPairs)
                 {
                     name = contactPair.Name;
-                    if (nameCounter[name] > 1 || _model.ContactPairs.ContainsKey(name))
-                        name = _model.ContactPairs.GetNextNumberedKey(name);
+                    if (nameCounter[name] > 1 || contactPairNames.Contains(name))
+                        name = contactPairNames.GetNextNumberedKey(name);
+                    contactPairNames.Add(name);
                     //
                     adjust = contactPair.Adjust == SearchContactPairAdjust.Yes;
                     if (contactPair.ContactPairMethod == FrmSearchContactPairs.ContactPairMethodNames[0])
@@ -17714,13 +17766,9 @@ namespace PrePoMax
                     contactPairToAdd.SlaveCreationData = GetMouseSelectionFromSelectionNodeIds(contactPairToAdd.SlaveCreationData);
                     contactPairToAdd.SlaveCreationIds = new int[] { 1 };
                     //
-                    AddContactPairCommand(contactPairToAdd, false);
-                    createdNames.Add(name);
+                    items.Add(contactPairToAdd);
                 }
-                //
-                FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
             }
-            return createdNames.ToArray();
         }
         public List<MasterSlaveItem> SearchContactPairs(double distance, double angleDeg,
                                                         CaeMesh.ContactSearchNamespace.GeometryFilterEnum filter,
@@ -17739,9 +17787,9 @@ namespace PrePoMax
             }
         }
         // The rows the search dialog shows, all with the same settings, so a script adds what OK of the dialog adds
-        public string[] AutoCreateSearchedContactPairs(List<MasterSlaveItem> masterSlaveItems, bool tie, bool adjust,
-                                                       double distance, string surfaceInteractionName,
-                                                       ContactPairMethod method)
+        public List<SearchContactPair> CreateSearchContactPairRows(List<MasterSlaveItem> masterSlaveItems, bool tie,
+                                                                   bool adjust, double distance,
+                                                                   string surfaceInteractionName, ContactPairMethod method)
         {
             string methodName = method == ContactPairMethod.NodeToSurface ? FrmSearchContactPairs.ContactPairMethodNames[0]
                                                                           : FrmSearchContactPairs.ContactPairMethodNames[1];
@@ -17756,9 +17804,7 @@ namespace PrePoMax
                 contactPair.MasterSlaveItem = masterSlaveItem;
                 contactPairs.Add(contactPair);
             }
-            //
-            if (tie) return AutoCreateTiedPairs(contactPairs);
-            else return AutoCreateContactPairs(contactPairs);
+            return contactPairs;
         }
 
         #endregion #################################################################################################################

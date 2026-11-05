@@ -201,18 +201,7 @@ namespace PrePoMax.Forms
                 if (binding != null)
                 {
                     List<SearchContactPair> contactPairs = binding.DataSource as List<SearchContactPair>;
-                    List<SearchContactPair> tiedContactPairs = new List<SearchContactPair>();
-                    List<SearchContactPair> contactContactPairs = new List<SearchContactPair>();
-                    //
-                    foreach (SearchContactPair contactPair in contactPairs)
-                    {
-                        if (contactPair.Type == SearchContactPairType.Tie) tiedContactPairs.Add(contactPair);
-                        else if (contactPair.Type == SearchContactPairType.Contact) contactContactPairs.Add(contactPair);
-                        else throw new NotSupportedException();
-                    }
-                    //
-                    _controller.AutoCreateTiedPairs(tiedContactPairs);
-                    _controller.AutoCreateContactPairs(contactContactPairs);
+                    _controller.AddSearchedContactPairsCommand(contactPairs);
                     //
                     btnCancel_Click(null, null);
                 }
