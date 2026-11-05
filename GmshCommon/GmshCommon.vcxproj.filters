@@ -18,9 +18,6 @@
     <ClInclude Include="GmshCommon.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="QMorph.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
