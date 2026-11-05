@@ -2028,17 +2028,41 @@ namespace PrePoMax
             double thickness = section.GetTotalThickness() * (1 + 2 * Math.Abs(section.Offset.Value));
             return distance <= shellSize + thickness;
         }
+        private HashSet<string> GetCompositeLayerModelPartNames(ShellResultData data)
+        {
+            HashSet<string> modelPartNames = new HashSet<string>();
+            if (data == null) return modelPartNames;
+            //
+            HashSet<int> partIds = new HashSet<int>();
+            FeElement shellElement;
+            foreach (ShellResultElement element in data.Elements.Values)
+            {
+                if (element.LayerNumber > 0 && _model.Mesh.Elements.TryGetValue(element.ShellElementId, out shellElement))
+                    partIds.Add(shellElement.PartId);
+            }
+            BasePart modelPart;
+            foreach (int partId in partIds)
+            {
+                modelPart = _model.Mesh.GetPartFromId(partId);
+                if (modelPart != null) modelPartNames.Add(modelPart.Name);
+            }
+            return modelPartNames;
+        }
         private void WriteResultPartMappingToOutput(string[] mappedPartNames, bool nodeCoordinatesChanged)
         {
             HashSet<string> mappedNames = new HashSet<string>(mappedPartNames);
+            // The layers of a composite shell take the place of its model part in the result mesh
+            HashSet<string> layeredNames = GetCompositeLayerModelPartNames(_allResults.CurrentResult.ShellResultData);
+            layeredNames.ExceptWith(mappedNames);
+            int numOfPartsToMap = _model.Mesh.Parts.Count - layeredNames.Count;
             //
-            if (mappedNames.Count < _model.Mesh.Parts.Count)
+            if (mappedNames.Count < numOfPartsToMap)
             {
                 _form.WriteDataToOutput("Result parts: the model mesh properties were applied to " + mappedNames.Count +
-                                        " of " + _model.Mesh.Parts.Count + " model parts.");
+                                        " of " + numOfPartsToMap + " model parts.");
                 foreach (var entry in _model.Mesh.Parts)
                 {
-                    if (!mappedNames.Contains(entry.Key))
+                    if (!mappedNames.Contains(entry.Key) && !layeredNames.Contains(entry.Key))
                         _form.WriteDataToOutput("Result parts: the model part " + entry.Key +
                                                 " was not found in the result mesh.");
                 }
@@ -32812,7 +32836,9 @@ namespace PrePoMax
         public void UpdatePartsScalarFields()
         {
             if (_allResults.CurrentResult == null || _allResults.CurrentResult.Mesh == null) return;
-            // Settings                                                              
+            // The actors shown in another view are not the result parts; the results view draws the current field
+            if (_currentView != ViewGeometryModelResults.Results) return;
+            // Settings
             SetPostLegendAndStatusBlockSettings();
             //
             Octree.Plane plane = _sectionViews.GetCurrentSectionViewPlane();
