@@ -153,6 +153,7 @@ namespace PrePoMax.Forms
         private void Binding_ListChanged(object sender, ListChangedEventArgs e)
         {
             _propertyItemChanged = true;
+            if (_viewSection is ViewCompositeShellSection vcss) vcss.UpdateLayupProperties();
             propertyGrid.Refresh();
             dgvData.Invalidate();
             pnlLayup.Invalidate();
@@ -239,6 +240,12 @@ namespace PrePoMax.Forms
             if (property == nameof(_viewSection.RegionType))
             {
                 ShowHideSelectionForm();
+            }
+            else if (_viewSection is ViewCompositeShellSection vcss &&
+                     (property == nameof(vcss.MaterialName) || property == nameof(vcss.TotalThickness)) &&
+                     dgvData.DataSource is BindingSource binding)
+            {
+                binding.ResetBindings(false);
             }
             //
             HighlightSection();
