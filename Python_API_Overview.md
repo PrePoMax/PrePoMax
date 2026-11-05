@@ -2077,6 +2077,7 @@ slave one; both are a `Selection` or a `Region`, and both name surfaces.
 | --- | --- |
 | `add(name, surface_interaction_name, master_region, slave_region, method=None, small_sliding=None, adjust=None, adjustment_size=None, master_color=None, slave_color=None)` | Adds a contact pair. `method` is `NodeToSurface`, `SurfaceToSurface`, `Mortar` or `Massless`. |
 | `replace(old_name, name=None, ...)` | Replaces a contact pair. A value that is not given keeps what the contact pair carries. A `method` other than `NodeToSurface` on a pair with small sliding is refused unless `small_sliding=False` is given too, because no other method supports it. |
+| `search(distance, angle_deg=35, pair_type='Tie', group_by='ByParts', solid=True, shell=True, shell_edges=True, ignore_hidden=True)` | Searches the mesh for touching faces of different parts, as **Interaction > Search Contact Pairs** does, and returns a `ContactSearchResult` without changing the model. See below. |
 | `swap_master_slave(names)` | Swaps the two sides. |
 | `merge_by_master_slave(names)` | Merges the contact pairs that share a master and a slave surface. |
 | `hide(names)`, `show(names)` | Symbol visibility. |
@@ -2100,6 +2101,68 @@ the `Default` size the dialog offers, is refused together with `adjust=False`, a
 The dialog hides the size while `adjust` is `False`, so it then reads back as `None` too, and the stored size comes
 back when the adjustment is turned on again. A replace that does not change the method keeps the small sliding the
 pair stores, even where the method does not write it; only a change of method clears it.
+
+#### Searching for contact pairs
+
+`search` finds the faces of different parts that lie within `distance` of each other and face each other within
+`angle_deg`, the way the **Search Contact Pairs** dialog does, and takes the dialog's settings as arguments, with
+the dialog's defaults. `distance` is in model units and larger than 0, and `angle_deg` lies between 0 and 180.
+`pair_type` is `Tie` or `Contact`. `group_by` is `None`, one pair for every two touching faces, `ByParts`, one pair
+for every two touching parts, or `ByContactGraph`, which merges the faces that share nodes so that a node is a slave
+node only once. `solid`, `shell` and `shell_edges` choose which faces are searched, and at least one of them must
+stay `True`; `ignore_hidden` leaves hidden parts out. The search needs the mesh, and it records nothing.
+
+**The result follows the mesh and the geometry.** A recorded script that searches runs the search again when it is
+regenerated, on the mesh the model has then, so a changed geometry, or a mesh fine or coarse enough to move a gap
+across `distance`, finds other pairs, and they are named and numbered as they are found. That is intended: the ties
+follow the model. A script that must add the same pairs every time adds them by their regions instead.
+
+### `ContactSearchResult`
+
+What `contact_pairs.search` found, a list of `FoundContactPair` that `len()`, iteration and a position index
+read. Nothing is in the model until `add` is called.
+
+| Member | Description |
+| --- | --- |
+| `pair_type` | `'Tie'` or `'Contact'`, as searched. |
+| `count` | The number of pairs found. |
+| `add(adjust=False, surface_interaction_name=None, method='SurfaceToSurface')` | Adds every pair found using command history, as **OK** of the dialog adds them, and returns the names of what it added as a `StringList`. |
+
+`add` gives every pair the settings of the dialog's lower half:
+
+- A **tie** takes the search `distance` as its position tolerance. An `unresolved` pair, a tie whose sides the
+  search could not tell apart, is added as a surface holding all its faces, for the sides to be picked by hand, and
+  its name is returned among the others. `surface_interaction_name` and `method` are refused for ties.
+- A **contact pair** needs `surface_interaction_name`, and takes the search `distance` as its adjustment size.
+  `method` is `NodeToSurface` or `SurfaceToSurface`, the two the dialog offers; change it afterwards with
+  `contact_pairs.replace`.
+- Pairs that share a name, or whose name the model already holds, are numbered as they are added, and the tree
+  and the symbols are updated once, after the last one. Calling `add` again adds the pairs again, numbered.
+
+### `FoundContactPair`
+
+One pair of a `ContactSearchResult`. It is not a model item; its regions can be given to `constraints.add_tie` or
+`contact_pairs.add`, which is how a script adds only some of the pairs.
+
+| Member | Description |
+| --- | --- |
+| `name` | The name the pair is added under, before numbering: the master part, `_to_` and the slave part, or `Item` for a name that would be too long. |
+| `geometry_type` | The kind of the master and of the slave faces joined by a dash, such as `Solid-Solid` or `Shell-Edge`, each `Solid`, `Shell`, `Edge` for shell edge faces or `Mixed`. An unresolved pair names its one side. |
+| `unresolved` | `True` for a tie whose sides the search could not tell apart; all its faces are on the master side. |
+| `master_region` | The master faces, as a new `'femodel'` surface `Selection` of geometry IDs. |
+| `slave_region` | The slave faces the same way, or `None` for an unresolved pair. |
+
+```python
+found = pmx.model.contact_pairs.search(0.01, angle_deg=35, pair_type='Tie', group_by='ByParts')
+print(len(found), 'pairs found')
+names = found.add()
+
+# Only the pairs between solids, one by one under names of the script's own
+for i, pair in enumerate(pmx.model.contact_pairs.search(0.01)):
+    if pair.geometry_type == 'Solid-Solid' and not pair.unresolved:
+        pmx.model.constraints.add_tie('Tie-%d' % (i + 1), pair.master_region, pair.slave_region,
+                                      position_tolerance=0.01)
+```
 
 ## Steps and step content
 

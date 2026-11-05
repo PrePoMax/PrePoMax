@@ -581,6 +581,18 @@ namespace PrePoMax.Python
         {
             _controller.ShowContactPairsCommand(contactPairNames);
         }
+        public List<MasterSlaveItem> SearchContactPairs(double distance, double angleDeg,
+                                                        CaeMesh.ContactSearchNamespace.GeometryFilterEnum filter,
+                                                        GroupContactPairsByEnum groupBy, bool tryToResolve)
+        {
+            return _controller.SearchContactPairs(distance, angleDeg, filter, groupBy, tryToResolve);
+        }
+        public string[] AddSearchedContactPairs(List<MasterSlaveItem> masterSlaveItems, bool tie, bool adjust,
+                                                double distance, string surfaceInteractionName, ContactPairMethod method)
+        {
+            return _controller.AutoCreateSearchedContactPairs(masterSlaveItems, tie, adjust, distance,
+                                                              surfaceInteractionName, method);
+        }
         //
         public void AddNodeSet(FeNodeSet nodeSet)
         {

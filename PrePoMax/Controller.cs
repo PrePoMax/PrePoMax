@@ -17146,8 +17146,9 @@ namespace PrePoMax
         }
 
         // Auto create
-        public void AutoCreateTiedPairs(List<Forms.SearchContactPair> contactPairs)
+        public string[] AutoCreateTiedPairs(List<Forms.SearchContactPair> contactPairs)
         {
+            List<string> createdNames = new List<string>();
             if (contactPairs != null)
             {
                 string name;
@@ -17176,6 +17177,7 @@ namespace PrePoMax
                         surface.CreationData = GetMouseSelectionFromSelectionNodeIds(surface.CreationData);
                         //
                         AddSurfaceCommand(surface, false);
+                        createdNames.Add(name);
                     }
                     else
                     {
@@ -17207,11 +17209,13 @@ namespace PrePoMax
                         tie.SlaveCreationIds = new int[] { 1 };
                         //
                         AddConstraintCommand(tie, false);
+                        createdNames.Add(name);
                     }
                 }
                 //
                 FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
             }
+            return createdNames.ToArray();
         }
 
         #endregion #################################################################################################################
@@ -17662,8 +17666,9 @@ namespace PrePoMax
                 RemoveSurfaces(new string[] { contactPair.SlaveRegionName }, false);
         }
         // Auto create
-        public void AutoCreateContactPairs(List<SearchContactPair> contactPairs)
+        public string[] AutoCreateContactPairs(List<SearchContactPair> contactPairs)
         {
+            List<string> createdNames = new List<string>();
             if (contactPairs != null)
             {
                 string name;
@@ -17710,10 +17715,50 @@ namespace PrePoMax
                     contactPairToAdd.SlaveCreationIds = new int[] { 1 };
                     //
                     AddContactPairCommand(contactPairToAdd, false);
+                    createdNames.Add(name);
                 }
                 //
                 FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
             }
+            return createdNames.ToArray();
+        }
+        public List<MasterSlaveItem> SearchContactPairs(double distance, double angleDeg,
+                                                        CaeMesh.ContactSearchNamespace.GeometryFilterEnum filter,
+                                                        GroupContactPairsByEnum groupBy, bool tryToResolve)
+        {
+            SuppressExplodedView();
+            try
+            {
+                ContactSearch contactSearch = new ContactSearch(_model.Mesh, _model.Geometry);
+                contactSearch.GroupContactPairsBy = groupBy;
+                return contactSearch.FindContactPairs(distance, angleDeg, filter, tryToResolve);
+            }
+            finally
+            {
+                ResumeExplodedViews(false);
+            }
+        }
+        // The rows the search dialog shows, all with the same settings, so a script adds what OK of the dialog adds
+        public string[] AutoCreateSearchedContactPairs(List<MasterSlaveItem> masterSlaveItems, bool tie, bool adjust,
+                                                       double distance, string surfaceInteractionName,
+                                                       ContactPairMethod method)
+        {
+            string methodName = method == ContactPairMethod.NodeToSurface ? FrmSearchContactPairs.ContactPairMethodNames[0]
+                                                                          : FrmSearchContactPairs.ContactPairMethodNames[1];
+            SearchContactPair contactPair;
+            List<SearchContactPair> contactPairs = new List<SearchContactPair>();
+            foreach (MasterSlaveItem masterSlaveItem in masterSlaveItems)
+            {
+                contactPair = new SearchContactPair(masterSlaveItem.Name, adjust, distance);
+                contactPair.Type = tie ? SearchContactPairType.Tie : SearchContactPairType.Contact;
+                contactPair.SurfaceInteractionName = surfaceInteractionName;
+                contactPair.ContactPairMethod = methodName;
+                contactPair.MasterSlaveItem = masterSlaveItem;
+                contactPairs.Add(contactPair);
+            }
+            //
+            if (tie) return AutoCreateTiedPairs(contactPairs);
+            else return AutoCreateContactPairs(contactPairs);
         }
 
         #endregion #################################################################################################################
