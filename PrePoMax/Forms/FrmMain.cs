@@ -12234,6 +12234,14 @@ namespace PrePoMax
         {
             InvokeIfRequired(_vtk.AdjustCameraDistanceAndClippingRedraw);
         }
+        public void SuspendCameraAdjustment()
+        {
+            InvokeIfRequired(_vtk.SuspendCameraAdjustment);
+        }
+        public void ResumeCameraAdjustment()
+        {
+            InvokeIfRequired(_vtk.ResumeCameraAdjustment);
+        }
         public void UpdateScalarsAndRedraw()
         {
             InvokeIfRequired(_vtk.UpdateScalarsAndRedraw);
@@ -12957,6 +12965,14 @@ namespace PrePoMax
             InvokeIfRequired(_modelTree.RegenerateTree, _controller.Model, _controller.Jobs, _controller.CurrentResult, remeshing);
             InvokeIfRequired(UpdateSymbolsList);
             InvokeIfRequired(SelectLastSymbolName);
+        }
+        public void BeginTreeUpdateBatch()
+        {
+            InvokeIfRequired(_modelTree.BeginUpdateBatch);
+        }
+        public void EndTreeUpdateBatch()
+        {
+            InvokeIfRequired(_modelTree.EndUpdateBatch);
         }
         public void AddTreeNode(ViewGeometryModelResults view, NamedClass item, string parentName)
         {

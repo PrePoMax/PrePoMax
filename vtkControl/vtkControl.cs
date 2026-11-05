@@ -59,6 +59,8 @@ namespace vtkControl
         // Variables                                                                                                                        
         public const int MaxImageMagnification = 4;
         private bool _renderingOn;
+        private int _cameraAdjustmentSuspendCount;
+        private bool _cameraAdjustmentPending;
         private bool _userPick;     // used to determine if the selection distance should be limited
         private vtkRenderer _renderer;
         private vtkRenderer _selectionRenderer;
@@ -4097,13 +4099,39 @@ namespace vtkControl
             }
             return false;
         }
+        // Drawing thousands of symbols adjusts the camera once at the end, because every adjustment measures every actor
+        public void SuspendCameraAdjustment()
+        {
+            _cameraAdjustmentSuspendCount++;
+        }
+        public void ResumeCameraAdjustment()
+        {
+            if (_cameraAdjustmentSuspendCount <= 0)
+                throw new InvalidOperationException("The camera adjustment is not suspended.");
+            //
+            _cameraAdjustmentSuspendCount--;
+            if (_cameraAdjustmentSuspendCount > 0 || !_cameraAdjustmentPending) return;
+            //
+            _cameraAdjustmentPending = false;
+            AdjustCameraAfterAdd();
+        }
+        private void AdjustCameraAfterAdd()
+        {
+            if (_cameraAdjustmentSuspendCount > 0)
+            {
+                _cameraAdjustmentPending = true;
+                return;
+            }
+            //
+            if (!AreAnyActorsVisible()) AdjustCameraDistanceAndClippingRedraw();
+            else AdjustCameraDistanceAndClipping();
+        }
         public vtkMaxActor AddPoints(vtkMaxActorData data)
         {
             vtkMaxActor actor = new vtkMaxActor(data, false, true);
             AddActorGeometry(actor, data.Layer);
             //
-            if (!AreAnyActorsVisible()) AdjustCameraDistanceAndClippingRedraw();
-            else AdjustCameraDistanceAndClipping();
+            AdjustCameraAfterAdd();
             //
             return actor;
         }
@@ -4114,8 +4142,7 @@ namespace vtkControl
             //
             AddActor(actor);
             //
-            if (!AreAnyActorsVisible()) AdjustCameraDistanceAndClippingRedraw();
-            else AdjustCameraDistanceAndClipping();
+            AdjustCameraAfterAdd();
             //
             return actor;
         }
@@ -4132,8 +4159,7 @@ namespace vtkControl
             //
             foreach (var actor in actors) AddActor(actor);
             //
-            if (!AreAnyActorsVisible()) AdjustCameraDistanceAndClippingRedraw();
-            else AdjustCameraDistanceAndClipping();
+            AdjustCameraAfterAdd();
         }
         //
         public void AddSphereActor(vtkMaxActorData data, double symbolSize)

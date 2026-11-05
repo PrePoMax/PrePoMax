@@ -17695,19 +17695,27 @@ namespace PrePoMax
             BeginUpdateBatch();
             try
             {
-                foreach (NamedClass item in items)
+                _form.BeginTreeUpdateBatch();
+                try
                 {
-                    try
+                    foreach (NamedClass item in items)
                     {
-                        if (item is FeSurface surface) AddSurface(surface, false);
-                        else if (item is CaeModel.Constraint constraint) AddConstraint(constraint, false);
-                        else if (item is ContactPair contactPair) AddContactPair(contactPair, false);
-                        else throw new NotSupportedException();
+                        try
+                        {
+                            if (item is FeSurface surface) AddSurface(surface, false);
+                            else if (item is CaeModel.Constraint constraint) AddConstraint(constraint, false);
+                            else if (item is ContactPair contactPair) AddContactPair(contactPair, false);
+                            else throw new NotSupportedException();
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add(item.Name + ": " + ex.Message);
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        errors.Add(item.Name + ": " + ex.Message);
-                    }
+                }
+                finally
+                {
+                    _form.EndTreeUpdateBatch();
                 }
                 FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
             }
@@ -26073,6 +26081,7 @@ namespace PrePoMax
                 //
                 _form.ClearButKeepParts();
                 //
+                _form.SuspendCameraAdjustment();
                 try
                 {
                     // Must be inside to continue screen update
@@ -26082,6 +26091,10 @@ namespace PrePoMax
                     ResetSectionView();
                 }
                 catch { }
+                finally
+                {
+                    _form.ResumeCameraAdjustment();
+                }
                 //
                 if (updateHighlights) UpdateTreeSelection();
                 _form.AdjustCameraDistanceAndClipping();
