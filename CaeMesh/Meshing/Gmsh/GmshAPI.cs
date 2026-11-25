@@ -6218,12 +6218,12 @@ namespace CaeMesh
             }
         }
         /// <summary>
-        /// Whether the lens face may be a sweep source: a face of a plane, with no reentrant vertex. A curved source,
-        /// and one with a pole, keeps the free mesh.
+        /// Whether the lens face may be a sweep source: one with no reentrant vertex, on a plane or on a curved surface,
+        /// as the lune of a sphere a hollow slice of a ball is swept from.
         /// </summary>
         private static bool IsLensSweepSourceShape(LensFace face)
         {
-            return face.ReentrantIndices.Length == 0 && Gmsh.Model.GetType(2, face.FaceId) == "Plane";
+            return face.ReentrantIndices.Length == 0;
         }
         /// <summary>
         /// Settles, once the edges carry their first 1D mesh, which two-sided lens sources are thin

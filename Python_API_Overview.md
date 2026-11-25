@@ -1259,14 +1259,14 @@ convex fillet of 8 or more elements or at the ends of a convex half circle of 16
 the output says why; the meshing never fails for it.
 A sweep submaps only its source surfaces, of the blocks swept between two ends, by the rules of its structured
 sources, a source with holes as well, whose inner walls are swept like the outer ones, and meshes a ring source - a
-pipe, a tube, a flange - as a ring by the same choice, and a plane source of one loop with two corners, one or none -
-a disc, an ellipse, a half disc, a teardrop, a stadium - as a lens face, chosen against the submapping as on a shell
-(one with no straight edge is never submapped): the rows that tie the counts
+pipe, a tube, a flange - as a ring by the same choice, and a source of one loop with two corners, one or none -
+a disc, an ellipse, a half disc, a teardrop, a stadium, the lune of a sphere - as a lens face, chosen against the
+submapping as on a shell (one with no straight edge is never submapped): the rows that tie the counts
 of such a source are given up at a price rather than refuse the sweep, also
 when the numbers of elements set on its edges make the grid impossible, and the source is then meshed free with a
 message, as is one whose grid would fold or have a quad corner below 0.2; under
-`algorithm_2d='QuadWild'` a submapped, ring or lens source is left to gmsh. A source of a revolved block, a curved
-source and, under `algorithm_2d='QuasiStructuredQuad'`, a lens source are not structured this way.
+`algorithm_2d='QuadWild'` a submapped, ring or lens source is left to gmsh. A curved submapped or ring source and,
+under `algorithm_2d='QuasiStructuredQuad'`, a lens source are not structured this way.
 `algorithm_recombine` of a Gmsh item is `None`, `Simple`, `Blossom`, `SimpleFullQuad`, `BlossomFullQuad` or
 `QuadDominant`.
 `QuadDominant`, for `shell_gmsh`, meshes like `Blossom` - gmsh then gives every edge it meshes itself an even number of
