@@ -6176,13 +6176,11 @@ namespace CaeMesh
                 foreach (var face in _gmshData.LensFaces.Where(IsLensSweepSourceShape)) lensFaces[face.FaceId] = face;
             }
             HashSet<int> wallSurfaceIds = new HashSet<int>(_sweepBlocks.SelectMany(block => block.WallSurfaceIds));
-            HashSet<int> revolvedSourceIds = new HashSet<int>(_sweepBlocks.Where(block => block.IsRevolved)
-                                                                          .SelectMany(block => block.SourceSurfaceIds));
             GmshSurface surface;
             TransfiniteFace structuredFace;
             foreach (var surfaceId in _sweepBlocks.SelectMany(block => block.SourceSurfaceIds).Distinct())
             {
-                if (wallSurfaceIds.Contains(surfaceId) || revolvedSourceIds.Contains(surfaceId) ||
+                if (wallSurfaceIds.Contains(surfaceId) ||
                     _freeMeshedSurfaceIds.Contains(surfaceId) || _tetrahedralSurfaceIds.Contains(surfaceId) ||
                     !surfaceIdSurface.TryGetValue(surfaceId, out surface)) continue;
                 //
