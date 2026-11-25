@@ -65,8 +65,8 @@ SHELLS = ["annulus", "annulus of halves", "turned seam", "thin washer", "eccentr
           "tube with radii", "thin tube", "thick tube", "plate large bore", "plate small bore", "elliptic ring",
           "L with small hole", "two holes", "small diamond"]
 SOLIDS = ["pipe", "thin pipe", "tube with radii", "flange"]
-# By shape: detected as a ring (None for not, else whether paired), submapped, the mapping chosen, the layers of a ring,
-# and the elements at the element size 5
+# By shape: detected as a ring (None for not, else whether paired), submapped, the mapping chosen, the layers of a ring
+# or the rings around the round holes of a lattice, and the elements at the element size 5
 EXPECTED = {"annulus": (True, False, "ring", 3, 78),
             "annulus of halves": (True, False, "ring", 3, 78),
             "turned seam": (True, False, "ring", 3, 78),
@@ -77,10 +77,10 @@ EXPECTED = {"annulus": (True, False, "ring", 3, 78),
             "thin tube": (True, True, "lattice", 0, 56),
             "thick tube": (True, True, "lattice", 0, 64),
             "plate large bore": (False, True, "ring", 2, 96),
-            "plate small bore": (None, True, "lattice", 0, 128),
+            "plate small bore": (None, True, "ringed lattice", 1, 144),
             "elliptic ring": (True, False, "ring", 1, 32),
-            "L with small hole": (None, True, "lattice", 0, 78),
-            "two holes": (None, True, "lattice", 0, 96),
+            "L with small hole": (None, True, "ringed lattice", 1, 90),
+            "two holes": (None, True, "ringed lattice", 2, 128),
             "small diamond": (None, False, "free", 0, 0)}
 EXPECTED_HEXAHEDRA = {"pipe": 312, "thin pipe": 156, "tube with radii": 468, "flange": 576}
 PLOTTED = ["annulus", "turned seam", "thin washer", "eccentric", "tube with radii", "thin tube", "plate large bore",
@@ -291,12 +291,19 @@ def min_corner_sine(elements, xyz):
 
 def mapping_of(elements):
     """How a mesh of quads was laid: a ring has every boundary node in two quads and every inner node in four, a lattice
-    has the inner nodes in four and a boundary node in one, anything else is free. Returns the mapping and the layers of
-    a ring: its quads over the nodes of one of its two loops."""
-    if not elements or any(len(e) != 4 for e in elements) or len(irregular_inner_nodes(elements)) > 0:
+    has the inner nodes in four and a boundary node in one, a ringed lattice is a lattice but for four inner nodes of
+    five quads at the ring around each of its round holes, anything else is free. Returns the mapping and the layers
+    of a ring: its quads over the nodes of one of its two loops; for a ringed lattice the number of its rings."""
+    if not elements or any(len(e) != 4 for e in elements):
         return "free", 0
     valence = valences(elements)
     boundary = boundary_nodes(elements)
+    irregular = irregular_inner_nodes(elements)
+    if len(irregular) > 0:
+        if len(irregular) % 4 == 0 and all(valence[node] == 5 for node in irregular) and \
+           any(valence[node] == 1 for node in boundary):
+            return "ringed lattice", len(irregular) // 4
+        return "free", 0
     if all(valence[node] == 2 for node in boundary):
         return "ring", len(elements) * 2 // len(boundary)
     if any(valence[node] == 1 for node in boundary):

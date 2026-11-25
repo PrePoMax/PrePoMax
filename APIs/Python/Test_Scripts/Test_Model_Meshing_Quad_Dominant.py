@@ -66,7 +66,7 @@ SOLIDS = SHELLS[:8]
 # quads on 24 before), and the cylinder patch, meshed free, on the counts mirrored across its two planes (152 and 46
 # before)
 EXPECTED_SIMPLE = {"disc": (76, 0), "half disc": (38, 0), "triangle": (56, 23), "house": (61, 10),
-                   "eccentric annulus": (58, 14), "plate with diamond": (165, 54), "three holes": (133, 0),
+                   "eccentric annulus": (58, 14), "plate with diamond": (165, 54), "three holes": (157, 0),
                    "heptagon": (97, 31), "thin L": (17, 0), "cylinder patch": (153, 56)}
 CYLINDER_RADIUS = 40.0
 

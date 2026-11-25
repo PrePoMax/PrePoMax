@@ -5057,12 +5057,16 @@ namespace CaeMesh
             // The edges of a ring source that is not paired aim at their shares of the total of its other loop
             Dictionary<int, int> ringTargetCounts = GetRingTargetCounts(_ringSourceFaces.Values,
                                                                         SweepWallTopology.GetElementCount);
+            // The edges of a round hole of a submapped source aim at the count of the ring around it
+            Dictionary<int, int> ringedHoleTargetCounts = GetRingedHoleTargetCounts(_submapSourceFaces.Values,
+                                                                                    SweepWallTopology.GetElementCount);
             int ringTargetCount;
             int pieceTargetCount;
             Dictionary<int, int> pieceTargetCounts = new Dictionary<int, int>();
             IntervalProblem problem = new IntervalProblem(edgeId =>
                 pieceTargetCounts.TryGetValue(edgeId, out pieceTargetCount) ? pieceTargetCount :
                 ringTargetCounts.TryGetValue(edgeId, out ringTargetCount) ? ringTargetCount :
+                ringedHoleTargetCounts.TryGetValue(edgeId, out ringTargetCount) ? ringTargetCount :
                 SweepWallTopology.GetElementCount(edgeId));
             // The walls
             Dictionary<int, int> edgeIdChainIndex = new Dictionary<int, int>();
@@ -6819,6 +6823,13 @@ namespace CaeMesh
                     targetCounts[entry.Key] = entry.Value;
                     edgeIdCount[entry.Key] = entry.Value;
                 }
+                // The edges of a round hole of a submapped face aim at the count of the ring around it
+                foreach (var entry in GetRingedHoleTargetCounts(submapped, edgeId => naturalCounts[edgeId]))
+                {
+                    if (pinnedEdgeIds.Contains(entry.Key)) continue;
+                    targetCounts[entry.Key] = entry.Value;
+                    edgeIdCount[entry.Key] = entry.Value;
+                }
                 Dictionary<TransfiniteSidePair, SubmapFace> submapPairFaces = new Dictionary<TransfiniteSidePair, SubmapFace>();
                 List<TransfiniteSidePair> allPairs = new List<TransfiniteSidePair>(pairs);
                 foreach (var face in submapped)
@@ -7387,7 +7398,8 @@ namespace CaeMesh
         /// <summary>
         /// The counts the edges of the submapped face are balanced to alone, or null when its rows cannot be kept. A face
         /// with holes is balanced only with withHoles, its holes keeping their room and its round holes a multiple of
-        /// four around them, and with raiseRoundHoles SubmapFace.MinNumberOfElementsRound at least.
+        /// four around them, and with raiseRoundHoles SubmapFace.MinNumberOfElementsRound at least; a round hole
+        /// with a ring around it aims at the count of the ring (GetRingedHoleTargetCounts).
         /// </summary>
         private Dictionary<int, int> GetSubmapTrialCounts(SubmapFace face, Dictionary<int, int> naturalCounts,
                                                           HashSet<int> pinnedEdgeIds,
@@ -7396,6 +7408,13 @@ namespace CaeMesh
                                                           bool raiseRoundHoles = false)
         {
             if (face.HasHoles && !withHoles) return null;
+            Dictionary<int, int> ringedHoleTargetCounts =
+                GetRingedHoleTargetCounts(new SubmapFace[] { face }, edgeId => naturalCounts[edgeId]);
+            if (ringedHoleTargetCounts.Count > 0)
+            {
+                naturalCounts = new Dictionary<int, int>(naturalCounts);
+                foreach (var entry in ringedHoleTargetCounts) naturalCounts[entry.Key] = entry.Value;
+            }
             Dictionary<int, int> edgeIdCount = GetTrialStartCounts(face.AllEdgeIds, naturalCounts, pinnedEdgeIds);
             Dictionary<int, int> edgeIdMultiples = new Dictionary<int, int>();
             if (fullQuad)
@@ -7438,6 +7457,67 @@ namespace CaeMesh
                 (face.HasHoles && !SubmapHolePlacement.TryPlace(face, edgeIdCount, loopVertexPoints, 1, out reason)))
                 return null;
             return edgeIdCount;
+        }
+        /// <summary>
+        /// The counts the edges of the round holes of the submapped faces aim at where a ring of quads is laid around
+        /// the hole (GmshSubmapMesher.GetRingedNumberOfElements): the count each edge is meshed with, raised so that
+        /// the elements of the circle around the ring are of the maximum element size. The room beside a hole is the least distance from its
+        /// circle to an edge or a vertex of another loop, counted as two thirds towards another round hole, as
+        /// GmshSubmapMesher measures it on the nodes, and is held against the maximum element size. A hole with a number of elements or an element size set on one
+        /// of its edges keeps its counts.
+        /// </summary>
+        private Dictionary<int, int> GetRingedHoleTargetCounts(IEnumerable<SubmapFace> faces, Func<int, int> getCount)
+        {
+            Dictionary<int, int> targetCounts = new Dictionary<int, int>();
+            foreach (var face in faces)
+            {
+                if (!face.HasHoles) continue;
+                SubmapFace[] loops = face.Loops;
+                for (int l = 1; l < loops.Length; l++)
+                {
+                    int[] edgeIds = loops[l].EdgeIds.Distinct().ToArray();
+                    if (!loops[l].IsRound || edgeIds.Any(edgeId => _gmshData.EdgeIdNumElements.ContainsKey(edgeId)))
+                        continue;
+                    double total = 0;
+                    double[] centre = new double[3];
+                    foreach (var edgeId in edgeIds)
+                    {
+                        double length;
+                        double[] edgeCentre = new double[3];
+                        Gmsh.Model.OCC.GetMass(1, edgeId, out length);
+                        Gmsh.Model.OCC.GetCenterOfMass(1, edgeId, out edgeCentre[0], out edgeCentre[1],
+                                                       out edgeCentre[2]);
+                        total += length;
+                        for (int d = 0; d < 3; d++) centre[d] += length * edgeCentre[d];
+                    }
+                    if (!(total > 0)) continue;
+                    for (int d = 0; d < 3; d++) centre[d] /= total;
+                    double radius = total / (2 * Math.PI);
+                    double room = double.MaxValue;
+                    for (int other = 0; other < loops.Length; other++)
+                    {
+                        if (other == l) continue;
+                        double share = other > 0 && loops[other].IsRound ? 2.0 / 3 : 1;
+                        List<double[]> points = loops[other].VertexNodeIds.Select(vertexId => GetVertexCoor(vertexId))
+                                                            .ToList();
+                        foreach (var edgeId in loops[other].EdgeIds.Distinct())
+                        {
+                            double[] closest;
+                            Gmsh.Model.GetClosestPoint(1, edgeId, centre, out closest, out _);
+                            if (closest.Length == 3) points.Add(closest);
+                        }
+                        foreach (var point in points)
+                            room = Math.Min(room, share * (GmshPoleChart.GetDistance(centre, point) - radius));
+                    }
+                    int numOfElements = edgeIds.Sum(getCount);
+                    double ringed = GmshSubmapMesher.GetRingedNumberOfElements(numOfElements, radius, room,
+                                                                               GetMaxElementSize());
+                    if (!(ringed > numOfElements)) continue;
+                    foreach (var edgeId in edgeIds)
+                        targetCounts[edgeId] = (int)Math.Round(getCount(edgeId) * ringed / numOfElements);
+                }
+            }
+            return targetCounts;
         }
         private static List<int[]> GetRoundHoleEdgeIds(IEnumerable<SubmapFace> faces)
         {

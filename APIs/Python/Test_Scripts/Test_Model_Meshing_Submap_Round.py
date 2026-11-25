@@ -6,7 +6,10 @@
 #the lattice it is a square of a quarter of its elements on each side, so it carries a multiple of four elements, as
 #many on each of its edges, and SubmapHolePlacement starts it at the node nearest 45 degrees about its centre in the
 #lattice. An edge that turns by about 180 degrees, a half circle, turns twice: three logical edges of a quarter, a
-#half and a quarter of its elements, so it carries a multiple of four.
+#half and a quarter of its elements, so it carries a multiple of four. A round hole with room beside it - one and a
+#half lengths of its elements to the nearest other loop - is meshed with a ring of quads around it
+#(GmshSubmapMesher.MinRingRoom): every node of the hole is a node of two quads, and the corners of its square, inner
+#nodes of five quads, lie on the outer side of the ring.
 #
 #  - submap_round.brep: plane faces side by side, one part each - a rectangle 60 x 40 with a centred round hole of
 #    r 10 as one closed edge, the same hole of two half circles whose vertices lie on the axis of the plate, of two half
@@ -18,12 +21,12 @@
 #    a rectangle with a round hole of r 13 that leaves walls of 7 mm, and a disc of two half circles.
 #    At the element size 5 every face but the discs, the annulus and the elliptic hole is detected with its round holes
 #    and its edges that turn twice, and every one but the slot-shaped plate is meshed as quadrilaterals only with four
-#    quads around every inner node, no folded quad, a worst scaled Jacobian of 0.2 at least and as many quads as
-#    recorded. The slot-shaped plate, a face with no corner, is a lens face as well; its submapped grid has a worst
+#    quads around every inner node but the four corners of every ring, no folded quad, a worst scaled Jacobian of 0.2
+#    at least, as many quads as recorded and a ring around the round holes recorded. The slot-shaped plate, a face with no corner, is a lens face as well; its submapped grid has a worst
 #    corner of 0.383 and its lens grid a better one, so it is a lens grid on its own counts (four inner nodes of three
 #    quads, 0.5 at least, as many quads as recorded, no message). Every round hole carries a
-#    multiple of four elements, as many on each edge, and its four corner nodes, the boundary nodes of three quads,
-#    lie within half a node spacing of the 45 degree directions about its centre. The two half circles turned by 30
+#    multiple of four elements, as many on each edge, and its four corner nodes, the boundary nodes of three quads or
+#    with a ring the inner nodes of five, lie within half a node spacing of the 45 degree directions about its centre. The two half circles turned by 30
 #    degrees give the mesh of the two on the axis, up to the spacing of the nodes. The discs, the annulus and the
 #    elliptic hole are not detected: a round outer loop is left free, and an ellipse is not round. The disc of one
 #    closed edge and the disc of two half circles, faces with no corner, are meshed as lens faces
@@ -43,7 +46,8 @@
 #    hole submapped.
 #  - submap_round_sweep.brep: a plate with a round hole, an L bracket with a bolt hole, a plate with a slot, a plate
 #    with four bolt holes and a block with a round and a square hole, extruded by 30 mm and swept: hexahedra only, the
-#    source a grid with four quads around every inner node, the hexahedra a multiple of its quads.
+#    source a grid with four quads around every inner node but the corners of its rings, the hexahedra a multiple of
+#    its quads.
 #  The models were made by gmsh's OCC kernel through GmshCommon: plane surfaces of lines and circle arcs in z = 0 with
 #  their holes as further curve loops, a closed circle by revolving a point and the ellipse a rational B-spline of one
 #  closed edge, the solids extruded by 30 mm.
@@ -90,15 +94,20 @@ ROUND_HOLES = {"round hole": [(30, 20, 10)], "two halves": [(30, 20, 10)], "turn
                "sheared round": [(30 + SHEAR * 20, 20, 8)], "coarse border": [(30, 20, 13)]}
 # By shape: the number of holes, the number of round ones, the turns of the edges that turn twice, and the quads at the
 # element size 5 (10 for the coarse border)
-EXPECTED = {"round hole": (1, 1, [], 80), "two halves": (1, 1, [], 80), "turned halves": (1, 1, [], 80),
-            "four quarters": (1, 1, [], 80), "off-centre round": (1, 1, [], 87), "four bolt holes": (4, 4, [], 156),
+EXPECTED = {"round hole": (1, 1, [], 96), "two halves": (1, 1, [], 96), "turned halves": (1, 1, [], 96),
+            "four quarters": (1, 1, [], 96), "off-centre round": (1, 1, [], 99), "four bolt holes": (4, 4, [], 204),
             "L with round hole": (1, 1, [], 72), "slot along": (1, 0, [-2, -2], 118),
             "slot across": (1, 0, [-2, -2], 148),
-            "round and rectangle": (2, 1, [], 148), "sheared round": (1, 1, [], 99), "coarse border": (1, 1, [], 32)}
+            "round and rectangle": (2, 1, [], 164), "sheared round": (1, 1, [], 111), "coarse border": (1, 1, [], 32)}
 # The hexahedra of the swept solids at the element size 5; the plate with the slot on the counts of a sweep mirrored
 # across its three planes (588 before)
-EXPECTED_HEXAHEDRA = {"plate round": 480, "L bracket": 480, "plate slot": 644, "plate four holes": 936,
-                      "round and square": 888}
+# The round holes with a ring of quads around them, by shape and by swept solid: every one but the hole of the L,
+# which lies 5 mm from the border with elements of 3.9 mm around it, and the one of the coarse border
+RINGED = {"round hole": 1, "two halves": 1, "turned halves": 1, "four quarters": 1, "off-centre round": 1,
+          "four bolt holes": 4, "round and rectangle": 1, "sheared round": 1}
+SOURCE_RINGS = {"plate round": 1, "L bracket": 1, "plate four holes": 4, "round and square": 1}
+EXPECTED_HEXAHEDRA = {"plate round": 576, "L bracket": 552, "plate slot": 644, "plate four holes": 1224,
+                      "round and square": 984}
 
 
 def check(condition, message):
@@ -292,12 +301,16 @@ def plot(name, title, elements, uv, marks=()):
     bitmap.Dispose()
 
 
-def check_submapped(face, name):
-    """Quadrilaterals only, four quads around every inner node, and no quad corner below the floor or folded."""
+def check_submapped(face, name, rings=0):
+    """Quadrilaterals only, four quads around every inner node but the four of five quads at the corners of the ring
+    around each round hole that has one, and no quad corner below the floor or folded."""
     kinds = face.kinds()
     check(list(kinds.keys()) == ["quadrilateral"], name + " must be quadrilaterals only: " + str(kinds))
     irregular = irregular_inner_nodes(face.elements)
-    check(len(irregular) == 0, name + " has " + str(len(irregular)) + " inner nodes without four quads")
+    valence = valences(face.elements)
+    check(len(irregular) == 4 * rings and all(valence[node] == 5 for node in irregular),
+          name + " has " + str(len(irregular)) + " inner nodes without four quads, of " +
+          str(sorted(valence[node] for node in irregular)) + " quads, instead of " + str(4 * rings) + " of five")
     quality = min_scaled_jacobian(face.elements, face.uv)
     check(quality is not None and quality >= 0.2, name + " has a quad corner of the scaled Jacobian " + str(quality))
     return quality
@@ -325,24 +338,35 @@ def describe(face):
 
 
 def round_hole_corners(face, centre, radius):
-    """The nodes on a round hole, by their angles about its centre, and its corner nodes, those of three quads."""
+    """The nodes on a round hole, its corner nodes, the angles of both about its centre, and whether a ring of quads
+    lies around it. Without a ring the corners are the nodes of the hole of three quads; with one every node of the
+    hole is a node of two quads, and the corners are the inner nodes of five quads within three rings of the hole."""
     valence = valences(face.elements)
-    on_hole = [node for node in valence if abs(math.hypot(face.xyz[node][0] - centre[0],
-                                                          face.xyz[node][1] - centre[1]) - radius) < 1E-3 * radius]
-    corners = [node for node in on_hole if valence[node] == 3]
+
+    def distance(node):
+        return math.hypot(face.xyz[node][0] - centre[0], face.xyz[node][1] - centre[1])
+
+    on_hole = [node for node in valence if abs(distance(node) - radius) < 1E-3 * radius]
+    ringed = len(on_hole) > 0 and all(valence[node] == 2 for node in on_hole)
+    if ringed:
+        reach = radius + 3 * 2 * math.pi * radius / len(on_hole)
+        corners = [node for node in irregular_inner_nodes(face.elements) if valence[node] == 5 and
+                   distance(node) < reach]
+    else:
+        corners = [node for node in on_hole if valence[node] == 3]
     angles = dict((node, math.degrees(math.atan2(face.xyz[node][1] - centre[1], face.xyz[node][0] - centre[0])))
-                  for node in on_hole)
-    return on_hole, corners, angles
+                  for node in on_hole + corners)
+    return on_hole, corners, angles, ringed
 
 
 def check_round_holes(name, part, face):
     """Every round hole: a multiple of four nodes on it, and four corner nodes within half a node spacing of the 45
-    degree directions. Returns the corner nodes and their angles."""
+    degree directions. Returns the corner nodes, and the nodes, the corner angles and the ring of every hole."""
     dx = offset(part)
     marks = []
     found = []
     for cx, cy, r in ROUND_HOLES.get(name, []):
-        on_hole, corners, angles = round_hole_corners(face, (cx + dx, cy), r)
+        on_hole, corners, angles, ringed = round_hole_corners(face, (cx + dx, cy), r)
         n = len(on_hole)
         check(n > 0 and n % 4 == 0,
               "a round hole of the " + name + " carries " + str(n) + " nodes, not a multiple of 4")
@@ -353,8 +377,13 @@ def check_round_holes(name, part, face):
               " corners off by " + str([round(d, 2) for d in deviations]) + " degrees, the spacing " +
               str(round(spacing, 2)))
         marks.extend(corners)
-        found.append((n, sorted(round(angles[c], 1) for c in corners)))
+        found.append((n, sorted(round(angles[c], 1) for c in corners), ringed))
     return marks, found
+
+
+def number_of_rings(name, part, face):
+    dx = offset(part)
+    return sum(1 for cx, cy, r in ROUND_HOLES.get(name, []) if round_hole_corners(face, (cx + dx, cy), r)[3])
 
 
 def check_shells(parts):
@@ -423,7 +452,10 @@ def check_shells(parts):
         messages = submapping_messages(part.name)
         print(name + ": holes", holes, "round", round_holes, "double turns", turns, "elements", face.kinds(),
               "messages", messages)
-        quality = check_submapped(face, "the " + name)
+        rings = number_of_rings(name, part, face)
+        check(rings == RINGED.get(name, 0), "the " + name + " has a ring around " + str(rings) + " of its round " +
+              "holes instead of " + str(RINGED.get(name, 0)))
+        quality = check_submapped(face, "the " + name, rings)
         check(len(messages) == 0, "the submapped " + name + " wrote: " + str(messages))
         marks, found = check_round_holes(name, part, face)
         print("   quads", len(face.elements), "worst scaled Jacobian", round(quality, 3), "round holes (nodes, corner "
@@ -509,7 +541,7 @@ def check_pins(parts):
     mesh(part, pins=[(edges[0][0], 6)])
     face = FaceMesh(part.name)
     counts = [edge_nodes(g) - 1 for _, g in edges]
-    quality = check_submapped(face, "the round hole of two halves with 6 elements on one")
+    quality = check_submapped(face, "the round hole of two halves with 6 elements on one", 1)
     check(counts == [6, 6] and len(submapping_messages(part.name)) == 0,
           "6 elements on a half circle are not carried to the other: " + str(counts))
     print("two halves with 6 elements on one: the other carries", counts[1], "quads", len(face.elements),
@@ -523,7 +555,7 @@ def check_pins(parts):
     mesh(part, pins=[(edges[0][0], 3)])
     face = FaceMesh(part.name)
     counts = [edge_nodes(g) - 1 for _, g in edges]
-    check_submapped(face, "the round hole of four quarters with 3 elements on one")
+    check_submapped(face, "the round hole of four quarters with 3 elements on one", 1)
     check(counts == [3, 3, 3, 3] and len(submapping_messages(part.name)) == 0,
           "3 elements on a quarter are not carried to the others: " + str(counts))
     print("four quarters with 3 elements on one: the others carry", counts[1:], "quads", len(face.elements))
@@ -536,7 +568,8 @@ def check_variants(parts):
         face = FaceMesh(part.name)
         messages = submapping_messages(part.name)
         print(name + " with the full-quad recombination:", face.kinds(), messages)
-        quality = check_submapped(face, "the " + name + " with the full-quad recombination")
+        quality = check_submapped(face, "the " + name + " with the full-quad recombination",
+                                  number_of_rings(name, part, face))
         check(len(messages) == 0, "the full-quad " + name + " wrote: " + str(messages))
         check_round_holes(name, part, face)
         print("   submapped, worst scaled Jacobian", round(quality, 3))
@@ -547,7 +580,7 @@ def check_variants(parts):
     face = FaceMesh(part.name)
     check(all(count == 8 for count in face.node_counts), "the second order round hole has elements of other than 8 " +
           "nodes: " + str(set(face.node_counts)))
-    check_submapped(face, "the second order round hole")
+    check_submapped(face, "the second order round hole", 1)
     print("round hole: second order submapped,", len(face.elements), "quads of 8 nodes")
 
 
@@ -620,9 +653,12 @@ def check_sweeps():
               "the swept " + name + " must be hexahedra only: " + str(kinds) + " " + str(messages))
         uv = dict((node, (mesh_.xyz[node][0], mesh_.xyz[node][1])) for quad in source for node in quad)
         irregular = irregular_inner_nodes(source)
+        valence = valences(source)
         quality = min_scaled_jacobian(source, uv)
-        check(len(irregular) == 0 and quality >= 0.2, "the source of the swept " + name + " has " +
-              str(len(irregular)) + " inner nodes without four quads and a worst scaled Jacobian of " + str(quality))
+        check(len(irregular) == 4 * SOURCE_RINGS.get(name, 0) and all(valence[node] == 5 for node in irregular) and
+              quality >= 0.2, "the source of the swept " + name + " has " + str(len(irregular)) + " inner nodes " +
+              "without four quads instead of " + str(4 * SOURCE_RINGS.get(name, 0)) + " of five, and a worst scaled " +
+              "Jacobian of " + str(quality))
         check(len(source) > 0 and len(mesh_.elements) % len(source) == 0,
               "the hexahedra of the " + name + " are not a multiple of its " + str(len(source)) + " source quads")
         if name in EXPECTED_HEXAHEDRA:
@@ -642,7 +678,8 @@ def main():
     nodes = sorted(tuple(float(c).hex() for c in p) for p in face.xyz.values())
     connectivity = sorted(tuple(sorted(tuple(face.xyz[n]) for n in e)) for e in face.elements)
     fingerprint = hashlib.sha256(repr((nodes, connectivity)).encode("ascii")).hexdigest()
-    check(fingerprint == "21806edb526e9b312e4772d85c37a290c92cd960a4bc67d64350d060a4fba858",
+    print("round hole: fingerprint", fingerprint)
+    check(fingerprint == "bece166102981bd33e05ff44e8072e5eb4c055a594344b3c6a1d01df89edb4e1",
           "the submapped plate with a round hole changed from its baseline mesh")
     check_turned(parts, faces)
     check_coarse_border(parts["coarse border"], faces["coarse border"])

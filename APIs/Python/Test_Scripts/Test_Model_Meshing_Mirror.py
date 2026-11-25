@@ -62,28 +62,28 @@ Z = (0.0, 0.0, 1.0)
 ALONG = (math.cos(math.radians(30.0)), math.sin(math.radians(30.0)), 0.0)
 ACROSS = (-math.sin(math.radians(30.0)), math.cos(math.radians(30.0)), 0.0)
 # The shape, the point all its planes pass through, their normals, its surfaces and its quadrilaterals
-SHAPES = [("plate with bore", (30.0, 20.0, 0.0), [X, Y], 1, 80),
-          ("four bores", (40.0, 25.0, 0.0), [X, Y], 1, 134),
+SHAPES = [("plate with bore", (30.0, 20.0, 0.0), [X, Y], 1, 96),
+          ("four bores", (40.0, 25.0, 0.0), [X, Y], 1, 182),
           ("tee", (30.0, 0.0, 0.0), [X], 1, 60),
           ("disc", (20.0, 20.0, 0.0), [X, Y], 1, 76),
           ("slot", (30.0, 15.0, 0.0), [X, Y], 1, 80),
           ("annulus", (30.0, 30.0, 0.0), [X, Y], 1, 78),
           ("plate with window", (30.0, 20.0, 0.0), [X, Y], 1, 84),
-          ("turned plate", (30.0, 20.0, 0.0), [ALONG, ACROSS], 1, 80),
+          ("turned plate", (30.0, 20.0, 0.0), [ALONG, ACROSS], 1, 96),
           ("plate with bore off", None, [], 1, None),
-          ("channel", (30.0, 20.0, 0.0), [X, Y], 3, 188),
-          ("split plate", (30.0, 20.0, 0.0), [X, Y], 1, 108),
+          ("channel", (30.0, 20.0, 0.0), [X, Y], 3, 196),
+          ("split plate", (30.0, 20.0, 0.0), [X, Y], 1, 120),
           ("turned seam", (30.0, 30.0, 0.0), [X, Y], 1, 78),
           ("split tee", (30.0, 0.0, 0.0), [X], 1, 60)]
 # The solid, the point its planes pass through, their normals, its source and side surfaces and its hexahedra
-SOLIDS = [("plate with bore", (30.0, 20.0, 10.0), [X, Y, Z], 6, 320),
-          ("four bores", (40.0, 25.0, 10.0), [X, Y, Z], 9, 536),
+SOLIDS = [("plate with bore", (30.0, 20.0, 10.0), [X, Y, Z], 6, 384),
+          ("four bores", (40.0, 25.0, 10.0), [X, Y, Z], 9, 728),
           ("tee", (30.0, 0.0, 10.0), [X, Z], 9, 240),
           ("disc", (20.0, 20.0, 10.0), [X, Y, Z], 2, 304),
           ("slot", (30.0, 15.0, 10.0), [X, Y, Z], 5, 320),
           ("annulus", (30.0, 30.0, 10.0), [X, Y, Z], 3, 312),
           ("plate with window", (30.0, 20.0, 10.0), [X, Y, Z], 9, 420),
-          ("split plate", (30.0, 20.0, 10.0), [X, Y, Z], 7, 432),
+          ("split plate", (30.0, 20.0, 10.0), [X, Y, Z], 7, 480),
           ("turned seam", (30.0, 30.0, 10.0), [X, Y, Z], 3, 312)]
 SWEEP_LINE = re.compile(r"Mirror: the part is symmetric across (\d+) plane/s - the mesh of (\d+) of its (\d+) source "
                         r"and side surfaces is mirrored\.")

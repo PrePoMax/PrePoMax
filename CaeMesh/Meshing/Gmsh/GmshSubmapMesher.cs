@@ -28,10 +28,22 @@ namespace CaeMesh
     /// a hole for which no place is found leaves the face as gmsh meshed it. The nodes of a round hole are read around
     /// it and split into its four logical edges from the node SubmapHolePlacement.GetRoundLoopOrder finds, so its edges
     /// must carry as many elements each and a multiple of four around it.
+    /// A round hole with room beside it is meshed with a ring of elements around it: the grid is laid around a
+    /// circle that lies a ring thickness outside the hole, node for node, and the ring joins the nodes of the hole to
+    /// those of the circle. The nodes of the hole are then all shared by two elements, and the four corners of the
+    /// square of the hole in the lattice, where five elements meet, lie on the circle and not on the hole. The ring is
+    /// as thick as its elements are long along the hole, and no thicker than half of what lies between the hole and
+    /// the nearest other loop of the face, a third towards a round hole, which may carry a ring of its own; where
+    /// less than MinRingRoom of the element length lies there the hole is meshed without a ring.
     /// </summary>
     public static class GmshSubmapMesher
     {
         // Variables
+        /// <summary>
+        /// The least distance between a round hole and the other loops of its face, as a share of the length of the
+        /// elements along the hole, with which the hole is meshed with a ring.
+        /// </summary>
+        public const double MinRingRoom = 1.5;
         private static readonly Regex LoopEdge = new Regex(@"(?<![A-Za-z])[Ee]dge(s?) (\d+)(?: and (\d+))?",
                                                            RegexOptions.Compiled);
 
@@ -52,7 +64,11 @@ namespace CaeMesh
             List<IntPtr>[][] loopTags;
             double[][][][] loopXyz;
             double[][][][] loopUv;
-            if (!Map(face, keepOrthogonal, out grid, out loopTags, out loopXyz, out loopUv, out reason)) return false;
+            int[][] gridQuads;
+            double[][] innerUv;
+            double[][] innerXyz;
+            if (!Map(face, keepOrthogonal, out grid, out loopTags, out loopXyz, out loopUv, out gridQuads, out innerUv,
+                     out innerXyz, out reason)) return false;
             // The tags of the boundary nodes of all loops in loop order, and the parameters of the outer loop, which
             // tell the way the grid turns
             IntPtr[] boundaryNodeTags = new IntPtr[grid.NumberOfBoundaryNodes];
@@ -70,8 +86,8 @@ namespace CaeMesh
                     }
                 }
             }
-            GmshThreeBlockMesher.ReplaceSurfaceMesh(face.FaceId, boundaryNodeTags, outerUv, grid.Quads, grid.InnerUv,
-                                                    grid.InnerXyz, quads);
+            GmshThreeBlockMesher.ReplaceSurfaceMesh(face.FaceId, boundaryNodeTags, outerUv, gridQuads, innerUv,
+                                                    innerXyz, quads);
             return true;
         }
         /// <summary>
@@ -91,9 +107,13 @@ namespace CaeMesh
             List<IntPtr>[][] loopTags;
             double[][][][] loopXyz;
             double[][][][] loopUv;
-            if (!Map(face, keepOrthogonal, out grid, out loopTags, out loopXyz, out loopUv, out reason)) return false;
+            int[][] gridQuads;
+            double[][] innerUv;
+            double[][] innerXyz;
+            if (!Map(face, keepOrthogonal, out grid, out loopTags, out loopXyz, out loopUv, out gridQuads, out innerUv,
+                     out innerXyz, out reason)) return false;
             // The inner nodes are keyed by negative tags, which no node of gmsh carries
-            IntPtr[] nodeTags = new IntPtr[grid.NumberOfBoundaryNodes + grid.InnerUv.Length];
+            IntPtr[] nodeTags = new IntPtr[grid.NumberOfBoundaryNodes + innerUv.Length];
             Dictionary<IntPtr, double[]> tagXyz = new Dictionary<IntPtr, double[]>();
             Dictionary<IntPtr, double[]> tagUv = new Dictionary<IntPtr, double[]>();
             List<double[]> cornerXyz = new List<double[]>();
@@ -112,21 +132,21 @@ namespace CaeMesh
                     }
                 }
             }
-            for (int n = 0; n < grid.InnerUv.Length; n++)
+            for (int n = 0; n < innerUv.Length; n++)
             {
                 IntPtr tag = new IntPtr(-1 - n);
                 nodeTags[grid.NumberOfBoundaryNodes + n] = tag;
-                tagXyz[tag] = grid.InnerXyz[n];
-                tagUv[tag] = grid.InnerUv[n];
+                tagXyz[tag] = innerXyz[n];
+                tagUv[tag] = innerUv[n];
             }
-            IntPtr[] quadNodeTags = grid.Quads.SelectMany(quad => quad.Select(nodeId => nodeTags[nodeId])).ToArray();
+            IntPtr[] quadNodeTags = gridQuads.SelectMany(quad => quad.Select(nodeId => nodeTags[nodeId])).ToArray();
             int numOfFoldedQuads;
             minScaledJacobian = GmshSeamGridMesher.GetMinScaledJacobian(face.FaceId, quadNodeTags, tagXyz, tagUv,
                                                                         GetPoleTags(face.FaceId, loopTags, cornerXyz),
                                                                         out numOfFoldedQuads);
             if (numOfFoldedQuads > 0)
             {
-                reason = numOfFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold in space";
+                reason = numOfFoldedQuads + " of the " + gridQuads.Length + " quads of its grid fold in space";
                 return false;
             }
             return true;
@@ -165,13 +185,20 @@ namespace CaeMesh
         /// <summary>
         /// The grid of the face on the nodes gmsh meshed on its edges, with the tags, coordinates and parameters of the
         /// nodes of its logical edges loop by loop. False, with the reason, when the grid cannot be made, folds or has
-        /// a quad corner below SubmapFaceDetector.MinScaledJacobian.
+        /// a quad corner below SubmapFaceDetector.MinScaledJacobian. The quads and the inner nodes are those of the
+        /// grid, and with a ring around a round hole those of the ring as well: the boundary nodes of the grid along
+        /// the hole are the nodes of the hole, and the nodes of the circle the grid is laid around are inner nodes that
+        /// follow those of the grid.
         /// </summary>
         private static bool Map(SubmapFace face, bool keepOrthogonal, out SubmapGrid grid,
                                 out List<IntPtr>[][] loopTags, out double[][][][] loopXyz,
-                                out double[][][][] loopUv, out string reason)
+                                out double[][][][] loopUv, out int[][] quads, out double[][] innerUv,
+                                out double[][] innerXyz, out string reason)
         {
             grid = null;
+            quads = null;
+            innerUv = null;
+            innerXyz = null;
             if (!TryPlaceHoles(face, out loopTags, out loopXyz, out loopUv, out _, out int[][] holeOffsets, out reason))
                 return false;
             int surfaceId = face.FaceId;
@@ -179,9 +206,12 @@ namespace CaeMesh
             int[][] loopDirections = face.LoopLogicalEdgeDirections;
             keepOrthogonal = keepOrthogonal && loops.All(loop => !loop.IsRound) &&
                              Gmsh.Model.GetType(2, surfaceId) == "Plane";
+            double[][][][] gridXyz;
+            double[][][][] gridUv;
+            GetRingLoops(surfaceId, loops, loopXyz, loopUv, out gridXyz, out gridUv);
             try
             {
-                grid = SubmapMapping.Map(loopDirections, loopUv, loopXyz, holeOffsets, uv =>
+                grid = SubmapMapping.Map(loopDirections, gridUv, gridXyz, holeOffsets, uv =>
                 {
                     double[] coor;
                     Gmsh.Model.GetValue(2, surfaceId, uv, out coor);
@@ -193,18 +223,256 @@ namespace CaeMesh
                 reason = NameLoopEdges(face, ex.Message);
                 return false;
             }
-            if (grid.NumberOfFoldedQuads > 0)
+            // With a ring the grid is judged as it is meshed, its nodes moved together with those of the ring
+            int numOfFoldedQuads = grid.NumberOfFoldedQuads;
+            double minScaledJacobian = grid.MinScaledJacobian;
+            AddRings(surfaceId, grid, loopXyz, loopUv, gridXyz, gridUv, out quads, out innerUv, out innerXyz,
+                     ref numOfFoldedQuads, ref minScaledJacobian);
+            if (numOfFoldedQuads > 0)
             {
-                reason = grid.NumberOfFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold";
+                reason = numOfFoldedQuads + " of the " + quads.Length + " quads of its grid fold";
                 return false;
             }
-            if (grid.MinScaledJacobian < SubmapFaceDetector.MinScaledJacobian)
+            if (minScaledJacobian < SubmapFaceDetector.MinScaledJacobian)
             {
-                reason = "its grid has a quad corner of the scaled Jacobian " + Math.Round(grid.MinScaledJacobian, 3) +
+                reason = "its grid has a quad corner of the scaled Jacobian " + Math.Round(minScaledJacobian, 3) +
                          ", below " + SubmapFaceDetector.MinScaledJacobian;
                 return false;
             }
             return true;
+        }
+        /// <summary>
+        /// The number of elements a round hole of the radius aims at, given the number its edges are meshed with and
+        /// the room beside it: with a ring around the hole the grid meets the circle a ring thickness outside it,
+        /// which is longer, so the hole takes as many elements as keep those of that circle at elementSize, the
+        /// length of the elements the grid beside the hole is made of. With sized = 2 pi radius / elementSize the
+        /// ring, as thick as an element of the hole is long, gives n (n - sized) = 2 pi sized, and one of half the
+        /// room, the thickest there is, n = sized (1 + room / (2 radius)). Never fewer than the hole is meshed with,
+        /// which its curvature may have raised already, and that number where the room is less than MinRingRoom of
+        /// elementSize: the rows more elements on the hole ask of the grid are then worse than the longer elements.
+        /// </summary>
+        public static double GetRingedNumberOfElements(int numOfElements, double radius, double room,
+                                                       double elementSize)
+        {
+            if (!(elementSize > 0) || room < MinRingRoom * elementSize) return numOfElements;
+            double sized = 2 * Math.PI * radius / elementSize;
+            double ringed = 0.5 * (sized + Math.Sqrt(sized * sized + 8 * Math.PI * sized));
+            if (2 * Math.PI * radius / ringed > 0.5 * room) ringed = sized * (1 + 0.5 * room / radius);
+            return Math.Max(numOfElements, ringed);
+        }
+        /// <summary>
+        /// The nodes the grid of the face is laid on: those of its loops, and for a round hole that is meshed with a
+        /// ring those of the circle a ring thickness outside it, each on the line from the centre of the hole through
+        /// its node of the hole and put on the surface.
+        /// </summary>
+        private static void GetRingLoops(int surfaceId, SubmapFace[] loops, double[][][][] loopXyz,
+                                         double[][][][] loopUv, out double[][][][] gridXyz,
+                                         out double[][][][] gridUv)
+        {
+            int numOfLoops = loops.Length;
+            gridXyz = (double[][][][])loopXyz.Clone();
+            gridUv = (double[][][][])loopUv.Clone();
+            // The centre of every round hole, its radius and the length of its elements
+            double[][] centres = new double[numOfLoops][];
+            double[] radii = new double[numOfLoops];
+            double[] lengths = new double[numOfLoops];
+            for (int l = 1; l < numOfLoops; l++)
+            {
+                if (!loops[l].IsRound) continue;
+                double[][] nodes = loopXyz[l].SelectMany(edge => edge.Take(edge.Length - 1)).ToArray();
+                centres[l] = new double[3];
+                foreach (var node in nodes)
+                {
+                    for (int d = 0; d < 3; d++) centres[l][d] += node[d] / nodes.Length;
+                }
+                for (int n = 0; n < nodes.Length; n++)
+                {
+                    radii[l] += GmshPoleChart.GetDistance(centres[l], nodes[n]) / nodes.Length;
+                    lengths[l] += GmshPoleChart.GetDistance(nodes[n], nodes[(n + 1) % nodes.Length]) / nodes.Length;
+                }
+            }
+            for (int l = 1; l < numOfLoops; l++)
+            {
+                if (centres[l] == null) continue;
+                double room = double.MaxValue;
+                for (int other = 0; other < numOfLoops; other++)
+                {
+                    if (other == l) continue;
+                    double share = centres[other] != null ? 2.0 / 3 : 1;
+                    foreach (var edge in loopXyz[other])
+                    {
+                        foreach (var node in edge)
+                            room = Math.Min(room, share * (GmshPoleChart.GetDistance(centres[l], node) - radii[l]));
+                    }
+                }
+                if (room < MinRingRoom * lengths[l]) continue;
+                double thickness = Math.Min(lengths[l], 0.5 * room);
+                int numOfEdges = loopXyz[l].Length;
+                double[][][] ringXyz = new double[numOfEdges][][];
+                double[][][] ringUv = new double[numOfEdges][][];
+                bool placed = true;
+                for (int k = 0; k < numOfEdges && placed; k++)
+                {
+                    int numOfNodes = loopXyz[l][k].Length;
+                    ringXyz[k] = new double[numOfNodes][];
+                    ringUv[k] = new double[numOfNodes][];
+                    for (int i = 0; i < numOfNodes && placed; i++)
+                    {
+                        if (i == 0 && k > 0)
+                        {
+                            ringXyz[k][0] = ringXyz[k - 1][ringXyz[k - 1].Length - 1];
+                            ringUv[k][0] = ringUv[k - 1][ringUv[k - 1].Length - 1];
+                            continue;
+                        }
+                        if (i == numOfNodes - 1 && k == numOfEdges - 1)
+                        {
+                            ringXyz[k][i] = ringXyz[0][0];
+                            ringUv[k][i] = ringUv[0][0];
+                            continue;
+                        }
+                        double[] node = loopXyz[l][k][i];
+                        double distance = GmshPoleChart.GetDistance(centres[l], node);
+                        double[] point = new double[3];
+                        for (int d = 0; d < 3; d++)
+                            point[d] = node[d] + thickness * (node[d] - centres[l][d]) / distance;
+                        double[] closest;
+                        double[] parameters;
+                        Gmsh.Model.GetClosestPoint(2, surfaceId, point, out closest, out _);
+                        placed = closest.Length == 3;
+                        if (!placed) break;
+                        Gmsh.Model.GetParametrization(2, surfaceId, closest, out parameters);
+                        placed = parameters.Length == 2;
+                        if (!placed) break;
+                        Gmsh.Model.GetValue(2, surfaceId, parameters, out closest);
+                        ringXyz[k][i] = closest;
+                        ringUv[k][i] = parameters;
+                    }
+                }
+                if (!placed) continue;
+                gridXyz[l] = ringXyz;
+                gridUv[l] = ringUv;
+            }
+        }
+        /// <summary>
+        /// The quads and the inner nodes of the grid with the rings of its round holes: where the grid was laid on
+        /// other nodes than those of a loop, gridUv against loopUv, its quads are joined to those nodes, which follow
+        /// its inner nodes, and a ring of quads, turning as the quads of the grid, joins them to the nodes of the loop.
+        /// The inner nodes, those the grid was laid on among them, are then moved together by the condition energy
+        /// descent SubmapMapping ends with, in the frame of the outer loop, so that the five elements at a corner of
+        /// the square of a hole share its angle. The number of folded quads and the worst scaled Jacobian of a quad
+        /// corner are then those of all the quads in that frame; without a ring they are left as given.
+        /// </summary>
+        private static void AddRings(int surfaceId, SubmapGrid grid, double[][][][] loopXyz, double[][][][] loopUv,
+                                     double[][][][] gridXyz, double[][][][] gridUv, out int[][] quads,
+                                     out double[][] innerUv, out double[][] innerXyz, ref int numOfFoldedQuads,
+                                     ref double minScaledJacobian)
+        {
+            quads = grid.Quads;
+            innerUv = grid.InnerUv;
+            innerXyz = grid.InnerXyz;
+            if (Enumerable.Range(0, loopUv.Length).All(l => ReferenceEquals(loopUv[l], gridUv[l]))) return;
+            List<double[]> allInnerUv = new List<double[]>(innerUv);
+            List<double[]> allInnerXyz = new List<double[]>(innerXyz);
+            Dictionary<int, int> ringNodeIds = new Dictionary<int, int>();
+            List<int[]> ringSides = new List<int[]>();
+            int edge = 0;
+            for (int l = 0; l < loopUv.Length; l++)
+            {
+                for (int k = 0; k < loopUv[l].Length; k++, edge++)
+                {
+                    if (ReferenceEquals(loopUv[l], gridUv[l])) continue;
+                    for (int i = 0; i < grid.EdgeCounts[edge]; i++)
+                    {
+                        ringNodeIds.Add(grid.GetBoundaryNodeId(edge, i), grid.NumberOfBoundaryNodes + allInnerUv.Count);
+                        allInnerUv.Add(gridUv[l][k][i]);
+                        allInnerXyz.Add(gridXyz[l][k][i]);
+                        ringSides.Add(new int[] { grid.GetBoundaryNodeId(edge, i),
+                                                  grid.GetBoundaryNodeId(edge, i + 1) });
+                    }
+                }
+            }
+            HashSet<Tuple<int, int>> gridSides = new HashSet<Tuple<int, int>>();
+            List<int[]> allQuads = new List<int[]>();
+            int ringNodeId;
+            foreach (var quad in grid.Quads)
+            {
+                for (int c = 0; c < 4; c++) gridSides.Add(new Tuple<int, int>(quad[c], quad[(c + 1) % 4]));
+                int[] joined = new int[4];
+                for (int c = 0; c < 4; c++)
+                    joined[c] = ringNodeIds.TryGetValue(quad[c], out ringNodeId) ? ringNodeId : quad[c];
+                allQuads.Add(joined);
+            }
+            foreach (var side in ringSides)
+            {
+                int first = side[0];
+                int second = side[1];
+                if (!gridSides.Contains(new Tuple<int, int>(first, second)))
+                {
+                    first = side[1];
+                    second = side[0];
+                }
+                allQuads.Add(new int[] { ringNodeIds[second], ringNodeIds[first], first, second });
+            }
+            quads = allQuads.ToArray();
+            innerUv = allInnerUv.ToArray();
+            // The frame of the outer loop, in which lengths and angles are those in space
+            int numOfBoundaryNodes = grid.NumberOfBoundaryNodes;
+            int numOfOuterNodes = grid.NumberOfOuterBoundaryNodes;
+            int numOfNodes = numOfBoundaryNodes + innerUv.Length;
+            double[][] boundaryUv = new double[numOfBoundaryNodes][];
+            double[][] boundaryXyz = new double[numOfBoundaryNodes][];
+            edge = 0;
+            for (int l = 0; l < loopUv.Length; l++)
+            {
+                for (int k = 0; k < loopUv[l].Length; k++, edge++)
+                {
+                    for (int i = 0; i < grid.EdgeCounts[edge]; i++)
+                    {
+                        boundaryUv[grid.GetBoundaryNodeId(edge, i)] = loopUv[l][k][i];
+                        boundaryXyz[grid.GetBoundaryNodeId(edge, i)] = loopXyz[l][k][i];
+                    }
+                }
+            }
+            double[][] outerUv = new double[numOfOuterNodes + 1][];
+            double[][] outerXyz = new double[numOfOuterNodes + 1][];
+            for (int b = 0; b <= numOfOuterNodes; b++)
+            {
+                outerUv[b] = boundaryUv[b % numOfOuterNodes];
+                outerXyz[b] = boundaryXyz[b % numOfOuterNodes];
+            }
+            double[][] none = new double[0][];
+            double[] w = ThreeBlockMapping.GetMetricFrame(new double[][][] { outerUv, none, none },
+                                                          new double[][][] { outerXyz, none, none });
+            double[][] points = new double[numOfNodes][];
+            for (int b = 0; b < numOfBoundaryNodes; b++) points[b] = ThreeBlockMapping.ToFrame(w, boundaryUv[b]);
+            for (int n = 0; n < innerUv.Length; n++)
+                points[numOfBoundaryNodes + n] = ThreeBlockMapping.ToFrame(w, innerUv[n]);
+            double orientation = ThreeBlockMapping.GetSignedArea(points, numOfOuterNodes) < 0 ? -1 : 1;
+            int[][] neighbours = ThreeBlockMapping.GetNeighbours(numOfNodes, allQuads);
+            int[] cornerStart;
+            int[] cornerQuads;
+            int[] cornerIndices;
+            QuadSmoothing.GetCorners(quads, numOfNodes, numOfBoundaryNodes, out cornerStart, out cornerQuads,
+                                     out cornerIndices);
+            if (QuadSmoothing.CountFoldedElements(points, quads, orientation) > 0)
+                QuadSmoothing.Untangle(points, neighbours, quads, cornerStart, cornerQuads, cornerIndices,
+                                       numOfBoundaryNodes, orientation);
+            QuadSmoothing.LowerConditionEnergy(points, neighbours, quads, cornerStart, cornerQuads, cornerIndices,
+                                               numOfBoundaryNodes, orientation);
+            numOfFoldedQuads = QuadSmoothing.CountFoldedElements(points, quads, orientation);
+            minScaledJacobian = QuadSmoothing.GetMinScaledJacobian(points, quads, orientation);
+            double[] flatUv = new double[2 * innerUv.Length];
+            for (int n = 0; n < innerUv.Length; n++)
+            {
+                innerUv[n] = ThreeBlockMapping.FromFrame(w, points[numOfBoundaryNodes + n]);
+                flatUv[2 * n] = innerUv[n][0];
+                flatUv[2 * n + 1] = innerUv[n][1];
+            }
+            double[] flatXyz;
+            Gmsh.Model.GetValue(2, surfaceId, flatUv, out flatXyz);
+            innerXyz = new double[innerUv.Length][];
+            for (int n = 0; n < innerUv.Length; n++)
+                innerXyz[n] = new double[] { flatXyz[3 * n], flatXyz[3 * n + 1], flatXyz[3 * n + 2] };
         }
         internal static bool TryPlaceHoles(SubmapFace face, out List<IntPtr>[][] loopTags, out double[][][][] loopXyz,
                                            out double[][][][] loopUv, out double[][][] loopNodeUv,
