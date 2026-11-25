@@ -158,6 +158,11 @@ namespace CaeMesh.Sweep
                                                                        edgeVertexIds[id] : GetEdgeVertexIds(id))
                                           .Where(id => vertexAngles.ContainsKey(id)).Select(id => vertexAngles[id])
                                           .ToArray();
+                // A wall with every vertex on the axis, as the sphere of a half disc turned about its diameter, spans
+                // the angles of the middles of its edges
+                if (angles.Length == 0)
+                    angles = downward.Select(Math.Abs).Distinct().Select(GetEdgeMiddle).Where(middle => !IsOnAxis(middle))
+                                     .Select(GetAngleFromSourcePlane).ToArray();
                 if (angles.Length == 0)
                     throw new CaeException("A wall of " + GetDescription() + " has no vertex off the axis.");
                 _wallSpans.Add(surfaceId, new double[] { angles.Min(), angles.Max() });
@@ -169,7 +174,8 @@ namespace CaeMesh.Sweep
             // no edge a turned node can land on. Neither is a degenerate edge off the axis, where a face closes onto
             // one vertex, which has no curve gmsh could project a node onto
             int[] pointEdgeIds = _wallEdgeIds.Concat(_targetEdgeIds)
-                                             .Where(id => !edgeVertexIds[id].Any(vertexId => vertexAngles.ContainsKey(vertexId)) ||
+                                             .Where(id => (!edgeVertexIds[id].Any(vertexId => vertexAngles.ContainsKey(vertexId)) &&
+                                                           IsOnAxis(GetEdgeMiddle(id))) ||
                                                           IsDegenerateEdge(id, edgeVertexIds[id]))
                                              .ToArray();
             _wallEdgeIds.ExceptWith(pointEdgeIds);
@@ -185,8 +191,9 @@ namespace CaeMesh.Sweep
                     _arcs.Add(new Tuple<int, double, double>(edgeId, Math.Min(start, end), Math.Max(start, end)));
                     continue;
                 }
-                double[] angles = offAxisIds.Select(id => vertexAngles[id]).ToArray();
-                if (angles.Length == 0 || angles.Max() - angles.Min() > _angleTolerance)
+                double[] angles = offAxisIds.Length > 0 ? offAxisIds.Select(id => vertexAngles[id]).ToArray()
+                                                        : new double[] { GetAngleFromSourcePlane(GetEdgeMiddle(edgeId)) };
+                if (angles.Max() - angles.Min() > _angleTolerance)
                     throw new CaeException(NameEdge(edgeId) + " of " + GetDescription() + " neither turns about the " +
                                            "axis nor stands at one angle of the revolution.");
                 levelEdgeAngles.Add(edgeId, angles[0]);
@@ -783,6 +790,69 @@ namespace CaeMesh.Sweep
                 return Math.Max(0, angle);
             }
             throw new CaeException("A vertex of " + GetDescription() + " lies on no circle a vertex of its source turns on.");
+        }
+        /// <summary>
+        /// The angle a point is turned through from the half plane of the source, in the sense the block is turned,
+        /// for a point on no circle a vertex of the source turns on: the middle of an edge whose vertices all lie on
+        /// the axis.
+        /// </summary>
+        private double GetAngleFromSourcePlane(double[] point)
+        {
+            foreach (var edgeId in _boundaryEdgeIds)
+            {
+                double[] from = GetRadial(GetEdgeMiddle(edgeId));
+                if (Math.Sqrt(Dot(from, from)) <= 100 * _tolerance) continue;
+                //
+                double[] to = GetRadial(point);
+                double angle = Math.Atan2(Dot(Cross(from, to), _direction), Dot(from, to));
+                if (angle < -_angleTolerance) angle += 2 * Math.PI;
+                return Math.Max(0, angle);
+            }
+            throw new CaeException("The source of " + GetDescription() + " has no edge off the axis.");
+        }
+        /// <summary>
+        /// The number of layers that turn the source through the angle in elements as long as those on the edges of the
+        /// meshed source: the arc the node of the source edges farthest from the axis turns along, over the mean
+        /// length of their line elements. It counts the layers of a block with no edge turning about the axis.
+        /// </summary>
+        public double GetLayerCountEstimate(double angle)
+        {
+            int[] elementTypes;
+            IntPtr[][] elementTags;
+            IntPtr[][] nodeTags;
+            IntPtr[] tags;
+            double[] coor;
+            double length = 0;
+            int count = 0;
+            double radius = 0;
+            foreach (var edgeId in _sourceEdgeIds)
+            {
+                Gmsh.Model.Mesh.GetNodes(out tags, out coor, 1, edgeId, true, false);
+                Dictionary<IntPtr, double[]> nodeCoor = new Dictionary<IntPtr, double[]>();
+                for (int i = 0; i < tags.Length; i++)
+                {
+                    double[] point = new double[] { coor[3 * i], coor[3 * i + 1], coor[3 * i + 2] };
+                    nodeCoor[tags[i]] = point;
+                    radius = Math.Max(radius, DistanceFromAxis(point, _center, _direction));
+                }
+                Gmsh.Model.Mesh.GetElements(out elementTypes, out elementTags, out nodeTags, 1, edgeId);
+                for (int i = 0; i < elementTypes.Length; i++)
+                {
+                    if (elementTypes[i] != (int)GmshElementType.LinearBeam) continue;
+                    for (int j = 0; j < elementTags[i].Length; j++)
+                    {
+                        double[] start;
+                        double[] end;
+                        if (!nodeCoor.TryGetValue(nodeTags[i][2 * j], out start) ||
+                            !nodeCoor.TryGetValue(nodeTags[i][2 * j + 1], out end)) continue;
+                        length += Distance(start, end);
+                        count++;
+                    }
+                }
+            }
+            if (count == 0 || length <= 0)
+                throw new CaeException("The edges of the source of " + GetDescription() + " are not meshed.");
+            return radius * angle / (length / count);
         }
         private double[] GetRadial(double[] point)
         {

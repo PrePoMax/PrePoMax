@@ -97,7 +97,12 @@ namespace PrePoMax
                 if (shortestEdge > 0) tbMinEdgeLen.Text = Math.Pow(10, Math.Ceiling(Math.Log10(shortestEdge))).ToString();
                 else tbMinEdgeLen.Text = "0.0";
                 //
-                labClosestEdges.Text = "Model min: " + closestEdges.ToString(numberFormat) + unitLength;
+                if (closestEdges == double.MaxValue)
+                {
+                    labClosestEdges.Text = "Model min: none";
+                    closestEdges = 0;
+                }
+                else labClosestEdges.Text = "Model min: " + closestEdges.ToString(numberFormat) + unitLength;
                 if (closestEdges > 0) tbMinEdgesDistance.Text = Math.Pow(10, Math.Ceiling(Math.Log10(closestEdges))).ToString();
                 else tbMinEdgesDistance.Text = "0.0";
                 //

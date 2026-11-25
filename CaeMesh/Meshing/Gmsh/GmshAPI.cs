@@ -3312,8 +3312,10 @@ namespace CaeMesh
         /// of the other blocks read them. The angles the vertices of the blocks stand at are the levels the layers end
         /// on, and every interval between two levels gets a count of its own: the smallest the arcs spanning it
         /// measure, shared out by angle where an arc spans several, since the coarser count is the one the user can
-        /// always refine. A count the user pinned on an arc of one interval wins. Blocks turned about one axis through
-        /// one angle may share walls, so they share their levels and their counts.
+        /// always refine. A count the user pinned on an arc of one interval wins. An interval no arc spans, as none
+        /// does when every vertex of the source lies on the axis, turns the source in elements as long as those on its
+        /// edges. Blocks turned about one axis through one angle may share walls, so they share their levels and their
+        /// counts.
         /// </summary>
         private void PrepareRevolvedLayers()
         {
@@ -3326,9 +3328,6 @@ namespace CaeMesh
             {
                 double[] levels = GetRevolvedLevels(group);
                 List<Tuple<int, double, double>> arcs = GetRevolvedArcs(group);
-                if (arcs.Count == 0)
-                    throw new CaeException("No vertex of the source of " + group[0].Block.GetDescription() + " lies off " +
-                                           "the axis, so the number of its element layers cannot be measured.");
                 int numIntervals = levels.Length - 1;
                 double[] estimates = Enumerable.Repeat(double.MaxValue, numIntervals).ToArray();
                 int[] fixedCounts = Enumerable.Repeat(int.MaxValue, numIntervals).ToArray();
@@ -3354,8 +3353,12 @@ namespace CaeMesh
                 {
                     if (fixedCounts[i] != int.MaxValue) counts[i] = Math.Max(1, fixedCounts[i]);
                     else if (estimates[i] != double.MaxValue) counts[i] = Math.Max(1, (int)Math.Round(estimates[i]));
-                    else throw new CaeException("No edge turns about the axis between two of the angles the vertices of " +
-                                                group[0].Block.GetDescription() + " stand at.");
+                    else
+                    {
+                        // No edge turns about the axis there, as none does when every vertex of the source lies on it
+                        double angle = levels[i + 1] - levels[i];
+                        counts[i] = Math.Max(1, (int)Math.Round(group.Min(block => block.GetLayerCountEstimate(angle))));
+                    }
                 }
                 foreach (var revolvedBlock in group)
                 {

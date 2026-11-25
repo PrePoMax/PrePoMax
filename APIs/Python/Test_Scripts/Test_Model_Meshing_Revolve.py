@@ -19,6 +19,10 @@
 #  - revolve_ball_pole.brep is an eighth of a ball, revolved about one of its straight edges. Its sphere has its poles
 #    off that axis, and one of them halfway along the arc the ball is cut along, where the spherical face closes onto
 #    a degenerate edge with no curve. No turned node lands on that edge, and the part is meshed without a setup item.
+#  - revolve_slice.brep is a slice of a ball, a half disc turned through 60 degrees about its diameter. Every vertex
+#    lies on the axis, so no edge leaves the source along the revolution: the axis is its straight edge and the angle
+#    the one onto the other half disc. A sweep item on the part revolves it into hexahedra collapsing into wedges and
+#    pyramids beside the axis, the layers as long as the elements of the source edges.
 #  - revolve_ring.brep is not recognized as revolved, and revolve_ring_hole.brep is swept.
 #  - revolve_capsule_split.brep is a capsule split across its axis into two cells, each revolved. The
 #    wall between them is meshed once, so the two mesh parts share every node on it.
@@ -113,6 +117,16 @@ def mesh_by_default(part):
     return kinds
 
 
+def test_slice():
+    part = import_parts("revolve_slice.brep")[0]
+    check(part.mesh_type == "Revolve", "the slice of a ball is recognized as " + part.mesh_type)
+    kinds = sweep(part)
+    check("tetrahedron" not in kinds and kinds.get("wedge", 0) > 0, "the slice of a ball is not revolved into layers " +
+          "collapsing beside the axis: " + str(kinds))
+    check(kinds["hexahedron"] > sum(kinds.values()) / 2, "the slice of a ball is not meshed mostly by hexahedra: " +
+          str(kinds))
+
+
 def test_split_capsule():
     added = import_parts("revolve_capsule_split.brep")
     compound = [p for p in added if p.part_type == "Compound"][0]
@@ -191,6 +205,7 @@ def main():
     pole = import_parts("revolve_ball_pole.brep")[0]
     check(pole.mesh_type == "Revolve", "the eighth of a ball is recognized as " + pole.mesh_type)
     mesh_by_default(pole)
+    test_slice()
     split_source = import_parts("revolve_split_source.brep")[0]
     check(split_source.mesh_type == "Revolve", "the part revolved from a split source is recognized as " +
           split_source.mesh_type)

@@ -3981,6 +3981,17 @@ namespace CaeModel
             foreach (var vertexId in sourceVertexIds) center = center + new Vec3D(_geometry.Nodes[vertexId].Coor);
             center = (1.0 / sourceVertexIds.Count) * center;
             Vec3D tangent = Vec3D.CrossProduct(direction, center - new Vec3D(axisCenter));
+            // A source with every vertex on the axis starts it in the middle of the nodes of its edges
+            if (tangent.Len == 0)
+            {
+                VisualizationData vis = part.Visualization;
+                int[] edgeNodeIds = vis.GetEdgeIdsForSurfaceIds(sourceSurfaceIds.ToArray())
+                                       .SelectMany(vis.GetOrderedNodeIdsForEdgeId).Distinct().ToArray();
+                center = new Vec3D();
+                foreach (var nodeId in edgeNodeIds) center = center + new Vec3D(_geometry.Nodes[nodeId].Coor);
+                center = (1.0 / edgeNodeIds.Length) * center;
+                tangent = Vec3D.CrossProduct(direction, center - new Vec3D(axisCenter));
+            }
             double[] arrowStart = null;
             double[] arrowDirection = null;
             if (tangent.Len > 0)
@@ -7190,6 +7201,10 @@ namespace CaeModel
                     maxNumDirectionEdges = candidateChainEdgeIds.Count;
                 }
             }
+            if (directionEdgeIds == null &&
+                TryGetRevolveAxisOnSourceEdge(part, surfaceIds, surfaceVertices, surfaceEdgeIds, axisTolerance,
+                                              out r, out arcAngleDeg, out axisCenter, out axisDirection))
+                return null;
             // Preserve the previous validation for surfaces that do not touch the revolution axis.
             bool arcEdges;
             if (directionEdgeIds == null)
@@ -7207,6 +7222,104 @@ namespace CaeModel
             if (!AreNodesOnRevolveAxis(axisNodeIds, axisCenter, axisDirection, axisTolerance))
                 return "The selected surfaces contain a vertex without a direction edge that is not on the revolution axis.";
             return null;
+        }
+        /// <summary>
+        /// The axis and the angle of a revolution whose source has every vertex on one straight edge of it, as a half
+        /// disc turned about its diameter has: no edge leaves a vertex of the source along the revolution, so the axis
+        /// is the line of that edge, turned the way that leaves the source into the part, and the angle is the one the
+        /// source turns through onto the planar surface beyond the edge. The axis center is in the coordinates of the
+        /// geometry nodes.
+        /// </summary>
+        private bool TryGetRevolveAxisOnSourceEdge(GeometryPart part, HashSet<int> surfaceIds,
+                                                   HashSet<int> surfaceVertices, HashSet<int> surfaceEdgeIds,
+                                                   double axisTolerance, out double r, out double arcAngleDeg,
+                                                   out double[] axisCenter, out double[] axisDirection)
+        {
+            r = -1;
+            arcAngleDeg = -1;
+            axisCenter = null;
+            axisDirection = null;
+            //
+            VisualizationData vis = part.Visualization;
+            if (vis.EdgeTypes == null || vis.FaceTypes == null) return false;
+            // The cells of a surface point out of the part
+            Vec3D normal = new Vec3D();
+            foreach (var surfaceId in surfaceIds)
+            {
+                foreach (var cellId in vis.CellIdsByFace[surfaceId])
+                {
+                    int[] cell = vis.Cells[cellId];
+                    if (cell.Length < 3) continue;
+                    Vec3D a = new Vec3D(_geometry.Nodes[cell[0]].Coor);
+                    normal = normal + Vec3D.CrossProduct(new Vec3D(_geometry.Nodes[cell[1]].Coor) - a,
+                                                         new Vec3D(_geometry.Nodes[cell[2]].Coor) - a);
+                }
+            }
+            if (normal.Len == 0) return false;
+            normal.Normalize();
+            //
+            HashSet<int> sourceNodeIds = new HashSet<int>(surfaceEdgeIds.SelectMany(vis.GetOrderedNodeIdsForEdgeId));
+            foreach (var edgeId in surfaceEdgeIds.OrderBy(id => id))
+            {
+                if (vis.EdgeTypes[edgeId] != GeomCurveType.Line) continue;
+                //
+                int[] edgeNodeIds = vis.GetOrderedNodeIdsForEdgeId(edgeId);
+                Vec3D center = new Vec3D(_geometry.Nodes[edgeNodeIds[0]].Coor);
+                Vec3D direction = new Vec3D(_geometry.Nodes[edgeNodeIds[edgeNodeIds.Length - 1]].Coor) - center;
+                if (direction.Len <= axisTolerance) continue;
+                direction.Normalize();
+                if (surfaceVertices.Any(id => Vec3D.CrossProduct(new Vec3D(_geometry.Nodes[id].Coor) - center,
+                                                                 direction).Len > axisTolerance)) continue;
+                //
+                double sourceRadius;
+                Vec3D sourceRadial = GetFarthestRadial(sourceNodeIds, center, direction, out sourceRadius);
+                if (sourceRadius <= axisTolerance) continue;
+                if (Vec3D.DotProduct(Vec3D.CrossProduct(direction, sourceRadial), normal) > 0)
+                    direction = -1 * direction;
+                //
+                for (int surfaceId = 0; surfaceId < vis.FaceCount; surfaceId++)
+                {
+                    if (surfaceIds.Contains(surfaceId) || vis.FaceTypes[surfaceId] != GeomFaceType.Plane ||
+                        !vis.FaceEdgeIds[surfaceId].Contains(edgeId)) continue;
+                    //
+                    double targetRadius;
+                    Vec3D targetRadial = GetFarthestRadial(vis.FaceEdgeIds[surfaceId]
+                                                              .SelectMany(vis.GetOrderedNodeIdsForEdgeId),
+                                                           center, direction, out targetRadius);
+                    if (targetRadius <= axisTolerance) continue;
+                    //
+                    double angle = Math.Atan2(Vec3D.DotProduct(Vec3D.CrossProduct(sourceRadial, targetRadial), direction),
+                                              Vec3D.DotProduct(sourceRadial, targetRadial));
+                    if (angle < 0) angle += 2 * Math.PI;
+                    if (angle <= 1E-6 || angle >= 2 * Math.PI - 1E-6) continue;
+                    //
+                    r = 0.5 * sourceRadius;
+                    arcAngleDeg = angle * 180 / Math.PI;
+                    axisCenter = center.Coor;
+                    axisDirection = direction.Coor;
+                    return true;
+                }
+            }
+            return false;
+        }
+        /// <summary>
+        /// The unit vector square to the axis towards the node farthest from it, and its distance from the axis.
+        /// </summary>
+        private Vec3D GetFarthestRadial(IEnumerable<int> nodeIds, Vec3D axisCenter, Vec3D axisDirection,
+                                        out double radius)
+        {
+            radius = 0;
+            Vec3D farthest = null;
+            foreach (var nodeId in nodeIds)
+            {
+                Vec3D arm = new Vec3D(_geometry.Nodes[nodeId].Coor) - axisCenter;
+                Vec3D radial = arm - Vec3D.DotProduct(arm, axisDirection) * axisDirection;
+                if (radial.Len <= radius) continue;
+                radius = radial.Len;
+                farthest = radial;
+            }
+            if (farthest != null) farthest.Normalize();
+            return farthest;
         }
         /// <summary>
         /// Finds the surfaces a solid part is revolved from: a connected group of coplanar surfaces whose edges
@@ -7373,7 +7486,11 @@ namespace CaeModel
                 unmatchedVertexIds = reversedUnmatchedVertexIds;
                 reversed = true;
             }
-            if (!targetVertexIds.Except(boundaryVertexIds).Any())
+            // A source with every vertex on the axis, as a half disc turned about its diameter, ends on its own vertices
+            double angleRad = (reversed ? -angleDeg : angleDeg) * Math.PI / 180;
+            bool allOnAxis = boundaryVertexIds.All(id => GetDistanceFromAxis(_geometry.Nodes[id].Coor, center,
+                                                                             direction) <= tolerance);
+            if (!allOnAxis && !targetVertexIds.Except(boundaryVertexIds).Any())
                 return "The revolution of " + sourceNames + " about its axis ends on no vertices of the part " +
                        part.Name + ", so the part is not revolved from it.";
             // Every vertex lies on a circle a vertex of the source turns on
@@ -7413,7 +7530,9 @@ namespace CaeModel
                 //
                 surfaceVertexIds = surfaceIdVertexIds[surfaceId];
                 if (vis.FaceTypes[surfaceId] == GeomFaceType.Plane && surfaceVertexIds.IsSubsetOf(targetVertexIds) &&
-                    !surfaceVertexIds.IsSubsetOf(sourceVertexIds))
+                    (!surfaceVertexIds.IsSubsetOf(sourceVertexIds) ||
+                     (allOnAxis && IsSurfaceTurnedSource(part, sourceSurfaceIds, surfaceId, center, direction, angleRad,
+                                                         tolerance))))
                 {
                     targetSurfaceIds.Add(surfaceId);
                     continue;
@@ -7428,7 +7547,6 @@ namespace CaeModel
                        ", so the part is not revolved from it.";
             // A vertex splitting an edge of the source boundary is turned onto an edge of the target boundary
             HashSet<int> targetEdgeIds = vis.GetEdgeIdsForSurfaceIds(targetSurfaceIds.ToArray());
-            double angleRad = (reversed ? -angleDeg : angleDeg) * Math.PI / 180;
             foreach (var vertexId in unmatchedVertexIds)
             {
                 Vec3D turned = RotateAboutAxis(new Vec3D(_geometry.Nodes[vertexId].Coor), center, direction, angleRad);
@@ -7438,6 +7556,55 @@ namespace CaeModel
                        GetSweepSurfaceNames(part, targetSurfaceIds) + ", so the part is not revolved from it.";
             }
             return null;
+        }
+        /// <summary>
+        /// Whether the surface lies in the plane of the source turned through the angle, on the side of the axis the
+        /// turned source lies on: the nodes of the source edges turned so lie in the plane of the surface, and the node
+        /// of the surface farthest from the axis points the way the farthest turned source node does.
+        /// </summary>
+        private bool IsSurfaceTurnedSource(GeometryPart part, HashSet<int> sourceSurfaceIds, int surfaceId,
+                                           Vec3D axisCenter, Vec3D axisDirection, double angleRad, double tolerance)
+        {
+            VisualizationData vis = part.Visualization;
+            HashSet<int> sourceNodeIds = new HashSet<int>(vis.GetEdgeIdsForSurfaceIds(sourceSurfaceIds.ToArray())
+                                                             .SelectMany(vis.GetOrderedNodeIdsForEdgeId));
+            HashSet<int> surfaceNodeIds = new HashSet<int>(vis.FaceEdgeIds[surfaceId]
+                                                              .SelectMany(vis.GetOrderedNodeIdsForEdgeId));
+            double sourceRadius;
+            double surfaceRadius;
+            Vec3D sourceRadial = GetFarthestRadial(sourceNodeIds, axisCenter, axisDirection, out sourceRadius);
+            Vec3D surfaceRadial = GetFarthestRadial(surfaceNodeIds, axisCenter, axisDirection, out surfaceRadius);
+            if (sourceRadial == null || surfaceRadial == null) return false;
+            //
+            Vec3D turnedRadial = RotateAboutAxis(sourceRadial, new Vec3D(), axisDirection, angleRad);
+            if (Vec3D.DotProduct(turnedRadial, surfaceRadial) < 1 - 1E-6) return false;
+            //
+            Vec3D a = null;
+            Vec3D normal = null;
+            foreach (var cellId in vis.CellIdsByFace[surfaceId])
+            {
+                int[] cell = vis.Cells[cellId];
+                if (cell.Length < 3) continue;
+                a = new Vec3D(_geometry.Nodes[cell[0]].Coor);
+                normal = Vec3D.CrossProduct(new Vec3D(_geometry.Nodes[cell[1]].Coor) - a,
+                                            new Vec3D(_geometry.Nodes[cell[2]].Coor) - a);
+                if (normal.Len > 0) break;
+            }
+            if (normal == null || normal.Len == 0) return false;
+            normal.Normalize();
+            foreach (var nodeId in sourceNodeIds)
+            {
+                Vec3D turned = RotateAboutAxis(new Vec3D(_geometry.Nodes[nodeId].Coor), axisCenter, axisDirection,
+                                               angleRad);
+                if (Math.Abs(Vec3D.DotProduct(turned - a, normal)) > tolerance) return false;
+            }
+            return true;
+        }
+        private static double GetDistanceFromAxis(double[] coor, Vec3D axisCenter, Vec3D axisDirection)
+        {
+            double radius;
+            GetAxialCoordinates(coor, axisCenter, axisDirection, out radius, out _);
+            return radius;
         }
         private double GetDistanceToEdge(VisualizationData vis, int edgeId, Vec3D point)
         {
