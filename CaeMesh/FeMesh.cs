@@ -858,13 +858,50 @@ namespace CaeMesh
             {
                 if (!_elements.TryGetValue(elementId, out element)) return PartMappingEnum.None;
                 //
-                if (partMapping == PartMappingEnum.Copy)
-                {
-                    partElement = mesh.Elements[elementId];
-                    if (!AreElementNodeIdsEqual(partElement, element)) partMapping = PartMappingEnum.Rebuild;
-                }
+                partElement = mesh.Elements[elementId];
+                if (AreElementNodeIdsEqual(partElement, element)) continue;
+                if (!IsSameElementInPlace(mesh, partElement, element)) return PartMappingEnum.None;
+                partMapping = PartMappingEnum.Rebuild;
             }
             return partMapping;
+        }
+        private bool IsSameElementInPlace(FeMesh mesh, FeElement element, FeElement resultElement)
+        {
+            bool expandedToSolid = !(element is FeElement3D) && resultElement is FeElement3D;
+            if ((element is FeElement3D) != (resultElement is FeElement3D) && !expandedToSolid) return false;
+            //
+            double[] center;
+            if (!TryGetElementCenter(mesh.Nodes, element, out center)) return false;
+            double[] resultCenter;
+            if (!TryGetElementCenter(_nodes, resultElement, out resultCenter)) return false;
+            //
+            BoundingBox boundingBox = new BoundingBox();
+            foreach (var nodeId in resultElement.NodeIds) boundingBox.IncludeNode(_nodes[nodeId]);
+            double tolerance = 0.05 * boundingBox.GetDiagonal();
+            // A shell, a beam or a 2D element expanded to a solid keeps its own centre inside the solid, offset or not
+            if (expandedToSolid) return boundingBox.MaxOutsideAxialDistance(center) <= tolerance;
+            double dx = center[0] - resultCenter[0];
+            double dy = center[1] - resultCenter[1];
+            double dz = center[2] - resultCenter[2];
+            return Math.Sqrt(dx * dx + dy * dy + dz * dz) <= tolerance;
+        }
+        private static bool TryGetElementCenter(Dictionary<int, FeNode> nodes, FeElement element, out double[] center)
+        {
+            FeNode node;
+            center = new double[3];
+            foreach (var nodeId in element.NodeIds)
+            {
+                if (!nodes.TryGetValue(nodeId, out node))
+                {
+                    center = null;
+                    return false;
+                }
+                center[0] += node.X;
+                center[1] += node.Y;
+                center[2] += node.Z;
+            }
+            for (int i = 0; i < 3; i++) center[i] /= element.NodeIds.Length;
+            return true;
         }
         private bool AreElementNodeIdsEqual(FeElement element1, FeElement element2)
         {
