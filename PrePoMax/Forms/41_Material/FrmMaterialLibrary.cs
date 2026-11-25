@@ -522,13 +522,7 @@ namespace PrePoMax.Forms
         {
             try
             {
-                if (_controller.Model != null && _modelChanged)
-                {
-                    string[] materialsToDelete = _controller.Model.Materials.Keys.ToArray();
-                    if (materialsToDelete.Length > 0) _controller.RemoveMaterialsCommand(materialsToDelete);
-                    //
-                    foreach (ListViewItem item in lvModelMaterials.Items) _controller.AddMaterialCommand((Material)item.Tag);
-                }
+                if (_controller.Model != null && _modelChanged) ApplyModelMaterialChanges();
                 Close();
             }
             catch (Exception ex)
@@ -555,7 +549,25 @@ namespace PrePoMax.Forms
         }
 
 
-        // Methods                                                                                                                  
+        // Methods
+        private void ApplyModelMaterialChanges()
+        {
+            List<Material> dialogMaterials = new List<Material>();
+            foreach (ListViewItem item in lvModelMaterials.Items) dialogMaterials.Add((Material)item.Tag);
+            //
+            List<Material> modelMaterials = _controller.Model.Materials.Values.ToList();
+            int unchangedCount = 0;
+            while (unchangedCount < modelMaterials.Count && unchangedCount < dialogMaterials.Count &&
+                   modelMaterials[unchangedCount] == dialogMaterials[unchangedCount])
+                unchangedCount++;
+            //
+            if (unchangedCount < modelMaterials.Count) _controller.SetMaterialsCommand(dialogMaterials.ToArray());
+            else
+            {
+                for (int i = unchangedCount; i < dialogMaterials.Count; i++)
+                    _controller.AddMaterialCommand(dialogMaterials[i]);
+            }
+        }
         private void SaveAllMaterialLibraries()
         {
             foreach (ListViewItem item in lvLibraries.Items) SaveMaterialLibrary(item);

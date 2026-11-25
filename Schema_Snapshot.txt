@@ -4796,6 +4796,11 @@ T 10548 class PrePoMax.Commands.CChangeElementOrder
 F 10548.0 System.String[] _partNames
 F 10548.1 System.Boolean _secondOrder
 F 10548.2 System.Boolean _projectToGeometry
+T 10549 class PrePoMax.Commands.CSetMaterials
+F 10549.0 System.String[] _oldMaterialNames
+F 10549.1 #3180[] _materials
+F 10549.2 #1011<System.Int32[],#3061> _userKeywords
+F 10549.3 System.Collections.Generic.List`1<#3059> _keywordOverrides
 R F 10348.13 System.Boolean _colorElements
 R F 10348.11 System.Int32 _numberOfFailures
 R F 10348.12 System.Double _warningLimit

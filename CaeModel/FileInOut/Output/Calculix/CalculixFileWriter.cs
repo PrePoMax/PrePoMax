@@ -1573,6 +1573,175 @@ namespace FileInOut.Output
                 }
             }
         }
+        // The user keywords and the keyword overrides of the model after its materials are replaced by the given ones.
+        // Those inside a material move with it and those of a removed material are removed. A user keyword between the
+        // materials belongs to the material before it, unless it starts a material of its own
+        static public bool GetKeywordsForReplacedMaterials(FeModel model, IList<Material> materials,
+                                                           out OrderedDictionary<int[], CalculixUserKeyword> userKeywords,
+                                                           out List<CalculixKeywordOverride> keywordOverrides)
+        {
+            userKeywords = null;
+            keywordOverrides = null;
+            List<CalculixKeyword> keywords;
+            try
+            {
+                keywords = GetModelKeywords(model, ConvertPyramidsToEnum.Wedges, null, true);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            CalTitle materialsTitle = keywords.OfType<CalTitle>().FirstOrDefault(title => title.Title == "Materials");
+            if (materialsTitle == null) return false;
+            int generatedMaterialsIndex = keywords.IndexOf(materialsTitle);
+            // Generated material keywords in the new order: the active given materials, then the ones the writer adds
+            List<CalculixKeyword> oldMaterialKeywords = new List<CalculixKeyword>(materialsTitle.Keywords);
+            Dictionary<Material, CalculixKeyword> materialKeywords = new Dictionary<Material, CalculixKeyword>();
+            foreach (var keyword in oldMaterialKeywords) materialKeywords[GetMaterial(keyword)] = keyword;
+            //
+            HashSet<Material> modelMaterials = new HashSet<Material>(model.Materials.Values);
+            List<CalculixKeyword> newMaterialKeywords = new List<CalculixKeyword>();
+            CalculixKeyword materialKeyword;
+            foreach (var material in materials)
+            {
+                if (!material.Active) continue;
+                if (materialKeywords.TryGetValue(material, out materialKeyword)) newMaterialKeywords.Add(materialKeyword);
+                else newMaterialKeywords.Add(new CalMaterial(material));
+            }
+            foreach (var keyword in oldMaterialKeywords)
+            {
+                if (!modelMaterials.Contains(GetMaterial(keyword))) newMaterialKeywords.Add(keyword);
+            }
+            Dictionary<CalculixKeyword, int> newMaterialIndices = new Dictionary<CalculixKeyword, int>();
+            for (int i = 0; i < newMaterialKeywords.Count; i++) newMaterialIndices[newMaterialKeywords[i]] = i;
+            // Keyword overrides address the generated keywords
+            int newIndex;
+            int[] indices;
+            CalculixKeywordOverride movedOverride;
+            keywordOverrides = new List<CalculixKeywordOverride>();
+            if (model.CalculixKeywordOverrides != null)
+            {
+                foreach (var keywordOverride in model.CalculixKeywordOverrides)
+                {
+                    indices = keywordOverride?.Indices;
+                    if (indices == null || indices.Length < 2 || indices[0] != generatedMaterialsIndex ||
+                        indices[1] < 0 || indices[1] >= oldMaterialKeywords.Count)
+                    {
+                        keywordOverrides.Add(keywordOverride);
+                    }
+                    else if (newMaterialIndices.TryGetValue(oldMaterialKeywords[indices[1]], out newIndex))
+                    {
+                        if (newIndex == indices[1]) keywordOverrides.Add(keywordOverride);
+                        else
+                        {
+                            indices[1] = newIndex;
+                            movedOverride = new CalculixKeywordOverride(indices, keywordOverride.OriginalSignature);
+                            movedOverride.Data = keywordOverride.Data;
+                            movedOverride.Disabled = keywordOverride.Disabled;
+                            if (keywordOverride.IsSuppressed) movedOverride.Suppress();
+                            keywordOverrides.Add(movedOverride);
+                        }
+                    }
+                }
+            }
+            // User keywords address the generated keywords with the user keywords before them inserted
+            Dictionary<CalculixKeyword, CalculixUserKeyword> insertedUserKeywords =
+                new Dictionary<CalculixKeyword, CalculixUserKeyword>();
+            List<KeyValuePair<int[], CalculixUserKeyword>> otherUserKeywords =
+                new List<KeyValuePair<int[], CalculixUserKeyword>>();
+            CalculixUserKeyword userKeywordClone;
+            if (model.CalculixUserKeywords != null)
+            {
+                foreach (var entry in model.CalculixUserKeywords)
+                {
+                    userKeywordClone = entry.Value.DeepClone();
+                    if (AddUserKeywordByIndices(keywords, entry.Key, userKeywordClone))
+                        insertedUserKeywords.Add(userKeywordClone, entry.Value);
+                    else otherUserKeywords.Add(entry);
+                }
+            }
+            //
+            List<CalculixKeyword> leadingKeywords = new List<CalculixKeyword>();
+            Dictionary<CalculixKeyword, List<CalculixKeyword>> materialPropertyKeywords =
+                new Dictionary<CalculixKeyword, List<CalculixKeyword>>();
+            Dictionary<CalculixKeyword, List<CalculixKeyword>> userMaterialKeywords =
+                new Dictionary<CalculixKeyword, List<CalculixKeyword>>();
+            CalculixKeyword currentMaterialKeyword = null;
+            bool userMaterialStarted = false;
+            foreach (var keyword in materialsTitle.Keywords)
+            {
+                if (keyword is CalMaterial)
+                {
+                    currentMaterialKeyword = keyword;
+                    userMaterialStarted = false;
+                    materialPropertyKeywords[keyword] = new List<CalculixKeyword>();
+                    userMaterialKeywords[keyword] = new List<CalculixKeyword>();
+                }
+                else if (currentMaterialKeyword == null) leadingKeywords.Add(keyword);
+                else
+                {
+                    if (keyword is CalculixUserKeyword userKeyword && StartsMaterial(userKeyword))
+                        userMaterialStarted = true;
+                    if (userMaterialStarted) userMaterialKeywords[currentMaterialKeyword].Add(keyword);
+                    else materialPropertyKeywords[currentMaterialKeyword].Add(keyword);
+                }
+            }
+            // The user materials after a removed material stay after the material before it
+            List<CalculixKeyword> lastKeptUserMaterialKeywords = leadingKeywords;
+            foreach (var keyword in oldMaterialKeywords)
+            {
+                if (newMaterialIndices.ContainsKey(keyword)) lastKeptUserMaterialKeywords = userMaterialKeywords[keyword];
+                else lastKeptUserMaterialKeywords.AddRange(userMaterialKeywords[keyword]);
+            }
+            //
+            materialsTitle.Keywords.Clear();
+            materialsTitle.Keywords.AddRange(leadingKeywords);
+            foreach (var keyword in newMaterialKeywords)
+            {
+                materialsTitle.Keywords.Add(keyword);
+                if (materialPropertyKeywords.ContainsKey(keyword))
+                {
+                    materialsTitle.Keywords.AddRange(materialPropertyKeywords[keyword]);
+                    materialsTitle.Keywords.AddRange(userMaterialKeywords[keyword]);
+                }
+            }
+            //
+            userKeywords = new OrderedDictionary<int[], CalculixUserKeyword>("User CalculiX keywords");
+            AddInsertedUserKeywords(keywords, new List<int>(), insertedUserKeywords, userKeywords);
+            foreach (var entry in otherUserKeywords) userKeywords.Add(entry.Key, entry.Value);
+            //
+            return true;
+        }
+        static private Material GetMaterial(CalculixKeyword materialKeyword)
+        {
+            return (Material)((CalMaterial)materialKeyword).GetBase;
+        }
+        static private bool StartsMaterial(CalculixUserKeyword userKeyword)
+        {
+            if (userKeyword.Data == null) return false;
+            //
+            string trimmedLine;
+            foreach (var line in userKeyword.Data.Split(new string[] { "\r\n", "\n", "\r" }, StringSplitOptions.None))
+            {
+                trimmedLine = line.Trim();
+                if (trimmedLine.Length == 0 || trimmedLine.StartsWith("**")) continue;
+                return trimmedLine.StartsWith("*MATERIAL", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+        static private void AddInsertedUserKeywords(List<CalculixKeyword> keywords, List<int> parentIndices,
+                                                    Dictionary<CalculixKeyword, CalculixUserKeyword> insertedUserKeywords,
+                                                    OrderedDictionary<int[], CalculixUserKeyword> userKeywords)
+        {
+            List<int> indices;
+            CalculixUserKeyword userKeyword;
+            for (int i = 0; i < keywords.Count; i++)
+            {
+                indices = new List<int>(parentIndices) { i };
+                if (insertedUserKeywords.TryGetValue(keywords[i], out userKeyword)) userKeywords.Add(indices.ToArray(), userKeyword);
+                AddInsertedUserKeywords(keywords[i].Keywords, indices, insertedUserKeywords, userKeywords);
+            }
+        }
         //
         static public string GetShortKeywordData(CalculixKeyword keyword, bool useHiding)
         {

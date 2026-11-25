@@ -384,6 +384,7 @@
     <Compile Include="Commands\0061_Material\CAddMaterial.cs" />
     <Compile Include="Commands\0061_Material\CRemoveMaterials.cs" />
     <Compile Include="Commands\0061_Material\CReplaceMaterial.cs" />
+    <Compile Include="Commands\0061_Material\CSetMaterials.cs" />
     <Compile Include="Commands\0063_Section\CAddSection.cs" />
     <Compile Include="Commands\0063_Section\CRemoveSections.cs" />
     <Compile Include="Commands\0062_MaterialOrientation\CAddMaterialOrientation.cs" />

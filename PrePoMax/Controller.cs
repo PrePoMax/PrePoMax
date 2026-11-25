@@ -16390,6 +16390,20 @@ namespace PrePoMax
             Commands.CRemoveMaterials comm = new Commands.CRemoveMaterials(materialNames);
             _commands.AddAndExecute(comm);
         }
+        public void SetMaterialsCommand(Material[] materials)
+        {
+            OrderedDictionary<int[], FileInOut.Output.Calculix.CalculixUserKeyword> userKeywords;
+            List<FileInOut.Output.Calculix.CalculixKeywordOverride> keywordOverrides;
+            if (!CalculixFileWriter.GetKeywordsForReplacedMaterials(_model, materials, out userKeywords,
+                                                                    out keywordOverrides))
+            {
+                userKeywords = null;
+                keywordOverrides = null;
+            }
+            Commands.CSetMaterials comm = new Commands.CSetMaterials(_model.Materials.Keys.ToArray(), materials,
+                                                                     userKeywords, keywordOverrides);
+            _commands.AddAndExecute(comm);
+        }
         //******************************************************************************************
         public string[] GetMaterialNames()
         {
@@ -16475,6 +16489,35 @@ namespace PrePoMax
             AnnotateWithColorLegend();
             //
             CheckAndUpdateModelValidity(true);
+        }
+        public void SetMaterials(Material[] materials,
+                                 OrderedDictionary<int[], FileInOut.Output.Calculix.CalculixUserKeyword> userKeywords,
+                                 List<FileInOut.Output.Calculix.CalculixKeywordOverride> keywordOverrides)
+        {
+            _model.Materials.Clear();
+            foreach (var material in materials) _model.Materials.Add(material.Name, material);
+            //
+            List<string> messages = new List<string>();
+            if (userKeywords != null)
+            {
+                int removedCount = (_model.CalculixUserKeywords?.Count ?? 0) - userKeywords.Count;
+                if (removedCount > 0) messages.Add($"Number of deleted CalculiX user keywords: {removedCount}.");
+                _model.CalculixUserKeywords = userKeywords;
+            }
+            if (keywordOverrides != null)
+            {
+                int removedCount = (_model.CalculixKeywordOverrides?.Count ?? 0) - keywordOverrides.Count;
+                if (removedCount > 0) messages.Add($"Number of reset modified CalculiX keywords: {removedCount}.");
+                _model.CalculixKeywordOverrides = keywordOverrides;
+            }
+            //
+            _form.RegenerateTree(false);
+            //
+            AnnotateWithColorLegend();
+            //
+            CheckAndUpdateModelValidity(true);
+            UpdateNumberOfModelModifiedKeywords();
+            ShowOrDeferKeywordStateMessages(messages);
         }
         //
         public string[] GetMaterialLibraryFiles()
