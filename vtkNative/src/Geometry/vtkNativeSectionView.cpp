@@ -475,11 +475,14 @@ namespace vtkn
                                                               vtkSmartPointer<vtkPolyData>& croppedEdges)
         {
             vtkDataArray* elementIds = surface->GetCellData()->GetGlobalIds();
+            vtkDataArray* cellColors = surface->GetCellData()->GetScalars();
             vtkSmartPointer<vtkPolyData> cropped = vtkSmartPointer<vtkPolyData>::New();
             cropped->SetPoints(surface->GetPoints());
             cropped->GetPointData()->ShallowCopy(surface->GetPointData());
             vtkNew<vtkCellArray> polys;
             vtkNew<vtkIdTypeArray> croppedElementIds;
+            vtkNew<vtkFloatArray> croppedCellColors;
+            croppedCellColors->SetName(SectionViewCellColorsName);
             std::set<int64_t> keptEdges;
             vtkIdType cellId = surface->GetNumberOfVerts() + surface->GetNumberOfLines();
             vtkCellArray* surfacePolys = surface->GetPolys();
@@ -492,12 +495,17 @@ namespace vtkn
                 if (keptElementIds.count(elementId) == 0) continue;
                 polys->InsertNextCell(pointIds);
                 croppedElementIds->InsertNextValue(elementId);
+                if (cellColors != nullptr && cellId < cellColors->GetNumberOfTuples())
+                    croppedCellColors->InsertNextValue(static_cast<float>(cellColors->GetTuple1(cellId)));
                 vtkIdType count = pointIds->GetNumberOfIds();
                 for (vtkIdType j = 0; j < count; j++)
                     keptEdges.insert(GetEdgeKey(pointIds->GetId(j), pointIds->GetId((j + 1) % count)));
             }
             cropped->SetPolys(polys);
             if (croppedElementIds->GetNumberOfTuples() > 0) cropped->GetCellData()->SetGlobalIds(croppedElementIds);
+            if (croppedCellColors->GetNumberOfTuples() > 0 &&
+                croppedCellColors->GetNumberOfTuples() == croppedElementIds->GetNumberOfTuples())
+                cropped->GetCellData()->AddArray(croppedCellColors);
             //
             croppedEdges = vtkSmartPointer<vtkPolyData>::New();
             if (edges != nullptr)

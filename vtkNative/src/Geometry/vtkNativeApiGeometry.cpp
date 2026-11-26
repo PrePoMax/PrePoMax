@@ -6,6 +6,7 @@
 #include "vtkNativeView.h"
 #include "vtkNativeColorSpectrum.h"
 
+#include <vtkCellData.h>
 #include <vtkColorTransferFunction.h>
 
 #include <vtkFloatArray.h>
@@ -309,6 +310,7 @@ extern "C"
 
     vtkn_status VTKN_CALL vtkn_view_set_section_view_data(vtkn_view view, const char* name, const vtkn_mesh* volume_grid,
                                                           const float* values, int32_t value_count,
+                                                          const float* cell_values, int32_t cell_value_count,
                                                           const double* section_color_rgba, int32_t hatch_index,
                                                           int32_t has_volume_cells)
     {
@@ -329,6 +331,15 @@ extern "C"
                     scalars->SetNumberOfValues(value_count);
                     for (int i = 0; i < value_count; i++) scalars->SetValue(i, values[i]);
                     grid->GetPointData()->SetScalars(scalars);
+                }
+                if (cell_values != nullptr)
+                {
+                    Require(cell_value_count == volume_grid->cell_count, "There must be one value per volume grid cell.");
+                    vtkNew<vtkFloatArray> cellColors;
+                    cellColors->SetName(SectionViewCellColorsName);
+                    cellColors->SetNumberOfValues(cell_value_count);
+                    for (int i = 0; i < cell_value_count; i++) cellColors->SetValue(i, cell_values[i]);
+                    grid->GetCellData()->AddArray(cellColors);
                 }
             }
             actor->SetSectionViewData(grid, section_color_rgba, hatch_index, has_volume_cells != 0);

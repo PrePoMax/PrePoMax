@@ -439,6 +439,15 @@ namespace vtkn
         }
         vtkDataArray* scalars = faces->GetPointData()->GetArray("scalars");
         PointScalars = vtkFloatArray::SafeDownCast(scalars);
+        // Faces of elements colored by the part's color table keep the colors of their elements
+        vtkFloatArray* cellColors = vtkFloatArray::SafeDownCast(faces->GetCellData()->GetArray(SectionViewCellColorsName));
+        if (cellColors != nullptr && !part.ColorTable.empty() &&
+            cellColors->GetNumberOfTuples() == faces->GetNumberOfCells())
+        {
+            faces->GetCellData()->SetScalars(cellColors);
+            CellScalars = cellColors;
+            ColorTable = part.ColorTable;
+        }
         HasExtremeNodes = part.HasExtremeNodes;
         Extremes = part.Extremes;
         vtkPolyData* edges[2] = { elementEdges, modelEdges };

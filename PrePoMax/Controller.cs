@@ -87,6 +87,8 @@ namespace PrePoMax
         [NonSerialized] protected string _elementQualityValuesKey;
         [NonSerialized] protected Color[] _elementQualityColors;
         [NonSerialized] protected string[] _elementQualityLabels;
+        [NonSerialized] protected Dictionary<int, int> _drawnElementIdColorId;
+        [NonSerialized] protected int _drawnElementColorCount;
         [NonSerialized] protected Dictionary<string, string> _colorBarTitles;
         [NonSerialized] protected ShowItemIdsEnum _showItemIds;
         [NonSerialized] protected bool _itemIdsSuppressed;
@@ -25566,6 +25568,10 @@ namespace PrePoMax
             Color[] elementColorTable = null;
             if (_annotateWithColor == AnnotateWithColorEnum.ElementQuality)
                 elementIdColorId = GetElementQualityColorIds(out elementColorTable);
+            // The section view colors the element faces it exposes as their elements
+            _drawnElementIdColorId = elementIdColorId;
+            _drawnElementColorCount = elementColorTable != null ? elementColorTable.Length :
+                                                                  _settings.Color.ColorTable.Length;
             //
             ConcurrentBag<string> hiddenActors = new ConcurrentBag<string>();
             ConcurrentBag<vtkMaxActorData> allData = new ConcurrentBag<vtkMaxActorData>();
@@ -25644,6 +25650,13 @@ namespace PrePoMax
                     sumR += cellColor.R;
                     sumG += cellColor.G;
                     sumB += cellColor.B;
+                }
+                // The table also covers the elements inside the part, which a section view exposes
+                int colorId;
+                foreach (int elementId in part.Labels)
+                {
+                    if (elementIdColorId.TryGetValue(elementId, out colorId) && colorId % colorTable.Length > maxColor)
+                        maxColor = colorId % colorTable.Length;
                 }
                 data.Geometry.Cells.Values = values;
                 // The shading and the highlights of the cell colors are taken from their mean color
@@ -33795,6 +33808,19 @@ namespace PrePoMax
                 data = new PartExchangeData();
                 mesh.GetSetNodesAndCells(part, out data.Nodes.Ids, out data.Nodes.Coor, out data.Cells.Ids,
                                          out data.Cells.CellNodeIds, out data.Cells.Types);
+                if (_currentView == ViewGeometryModelResults.Model && _drawnElementIdColorId != null &&
+                    _drawnElementColorCount > 0)
+                {
+                    int colorId;
+                    float[] values = new float[data.Cells.Ids.Length];
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        if (_drawnElementIdColorId.TryGetValue(data.Cells.Ids[i], out colorId))
+                            values[i] = colorId % _drawnElementColorCount;
+                        else values[i] = -1;
+                    }
+                    data.Cells.Values = values;
+                }
             }
             return data;
         }

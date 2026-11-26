@@ -92,6 +92,7 @@ namespace vtkControl.Native
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern VtkNativeStatus vtkn_view_set_section_view_data(IntPtr view, byte[] name, IntPtr volumeGrid,
                                                                              float[] values, int valueCount,
+                                                                             float[] cellValues, int cellValueCount,
                                                                              double[] sectionColorRgba, int hatchIndex,
                                                                              int hasVolumeCells);
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

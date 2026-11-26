@@ -220,6 +220,8 @@ namespace vtkn
     vtkSmartPointer<vtkUnstructuredGrid> BuildUnstructuredGrid(const vtkn_mesh& mesh);
     constexpr const char* SectionViewNodeIdsName = "SectionViewNodeIds";
     constexpr const char* SectionViewElementIdsName = "SectionViewElementIds";
+    // The color table indices of the elements, which the faces of a section view take from their part
+    constexpr const char* SectionViewCellColorsName = "SectionViewCellColors";
     // The style vtkMaxActor has before any data sets it, as its default constructor leaves it
     vtkn_part_style DefaultStyle();
 }

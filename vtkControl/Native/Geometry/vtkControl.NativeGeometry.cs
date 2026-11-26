@@ -335,7 +335,8 @@ namespace vtkControl
                         hatchIndices.Add(hatchGroup, hatchIndex);
                     }
                     _nativeMirror.SetSectionViewData(actor.NativeName, VtkNativeMeshData.FromPartExchangeData(data),
-                                                     data.Nodes.Values, color, hatchIndex, actor.HasVolumeCells);
+                                                     data.Nodes.Values, data.Cells.Values, color, hatchIndex,
+                                                     actor.HasVolumeCells);
                 }
                 VtkNativeSectionView sectionView = new VtkNativeSectionView();
                 sectionView.PointX = point[0];

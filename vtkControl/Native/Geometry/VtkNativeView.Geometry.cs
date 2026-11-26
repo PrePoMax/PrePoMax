@@ -153,8 +153,8 @@ namespace vtkControl.Native
             return hasRange == 0 ? null : range;
         }
         //
-        public void SetSectionViewData(string name, VtkNativeMeshData volumeGrid, float[] values, Color sectionColor,
-                                       int hatchIndex, bool hasVolumeCells)
+        public void SetSectionViewData(string name, VtkNativeMeshData volumeGrid, float[] values, float[] cellValues,
+                                       Color sectionColor, int hatchIndex, bool hasVolumeCells)
         {
             if (name == null) throw new ArgumentNullException("name");
             double[] color = new double[] { sectionColor.R / 255d, sectionColor.G / 255d, sectionColor.B / 255d,
@@ -169,6 +169,9 @@ namespace vtkControl.Native
                     VtkNativeLibrary.Check(VtkNativeMethods.vtkn_view_set_section_view_data(handle, VtkNativeLibrary.ToUtf8(name),
                                                                                              gridPointer, values,
                                                                                              values == null ? 0 : values.Length,
+                                                                                             cellValues,
+                                                                                             cellValues == null ? 0 :
+                                                                                             cellValues.Length,
                                                                                              color, hatchIndex,
                                                                                              hasVolumeCells ? 1 : 0));
                 }

@@ -302,10 +302,13 @@ VTKN_API vtkn_status VTKN_CALL vtkn_view_update_scalar_formatting(vtkn_view view
 /* The range the last scalar formatting colored with, and whether there was one */
 VTKN_API vtkn_status VTKN_CALL vtkn_view_get_scalar_range(vtkn_view view, double* range2, int32_t* has_range);
 /* What the section view of a base actor needs: its volume grid (volume cells, null for none) with the result
-   values at its points (null for none), the color of its section faces (RGBA) and its hatch index */
+   values at its points (null for none) and the color table indices of its cells (null for none), the color of its
+   section faces (RGBA) and its hatch index */
 VTKN_API vtkn_status VTKN_CALL vtkn_view_set_section_view_data(vtkn_view view, const char* name,
                                                                 const vtkn_mesh* volume_grid, const float* values,
-                                                                int32_t value_count, const double* section_color_rgba,
+                                                                int32_t value_count, const float* cell_values,
+                                                                int32_t cell_value_count,
+                                                                const double* section_color_rgba,
                                                                 int32_t hatch_index, int32_t has_volume_cells);
 /* CreateSectionView, or UpdateSectionView when one is active */
 VTKN_API vtkn_status VTKN_CALL vtkn_view_create_section_view(vtkn_view view, const vtkn_section_view* section_view);
