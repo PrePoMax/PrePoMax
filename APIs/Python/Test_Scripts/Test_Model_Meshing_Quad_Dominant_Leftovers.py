@@ -3,8 +3,9 @@
 #
 #Checks the faces on which the quad-dominant recombination of a Gmsh shell kept triangles before its last passes: the
 #cleanup (QuadCleanup) pairs the triangles it has left by meshing their region again with quads only or by splitting
-#the path between them, holds a face with a sharp corner to what that corner allows, GmshQuadMesher projects a face
-#whose parameters fold gmsh's own mesh on its mean plane and cuts a face open along the curves inside it, and the
+#the path between them, holds a face with a sharp corner to what that corner allows, GmshQuadMesher cleans a curved
+#face on its surface, where parameters that fold gmsh's own mesh do not matter, and cuts a face open along the curves
+#inside it, and the
 #balance gives such a face an even total and meshes the edges of the faces laid before gmsh as gmsh meshes them for the
 #others.
 #

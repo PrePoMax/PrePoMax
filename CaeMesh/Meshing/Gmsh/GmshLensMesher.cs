@@ -339,7 +339,7 @@ namespace CaeMesh
             sides = sideNodeIds.Select(side => side.ToArray()).ToArray();
         }
         /// <summary>
-        /// Whether the grid is kept: no quad folds in its chart or in space, and with the floor no quad corner lies
+        /// Whether the grid is kept: no quad folds in space, and with the floor no quad corner lies
         /// below SubmapFaceDetector.MinScaledJacobian. Also the worst scaled Jacobian of a quad corner in space.
         /// </summary>
         private static bool Judge(GmshLensGrid grid, bool floor, out double minScaledJacobian, out string reason)
@@ -347,7 +347,6 @@ namespace CaeMesh
             reason = null;
             int numOfFoldedQuads;
             minScaledJacobian = grid.Judge(out numOfFoldedQuads);
-            numOfFoldedQuads = Math.Max(numOfFoldedQuads, grid.NumberOfFoldedQuads);
             if (numOfFoldedQuads > 0)
             {
                 reason = numOfFoldedQuads + " of the " + grid.NumberOfQuads + " quads of its grid fold";

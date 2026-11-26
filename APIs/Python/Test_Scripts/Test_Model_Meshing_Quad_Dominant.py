@@ -14,15 +14,14 @@
 #    6 and 9, an irregular heptagon, an L whose legs are 2 mm wide and 30 long, and a quarter of a cylinder of r 40 and
 #    50 high with a round hole of r 6 cut through it radially. The half disc, submapped as well, is a lens face on its
 #    own counts, its submapped grid refused, two three-sided pieces of three blocks of quads, the disc, a face with no
-#    corner, is a lens face of four
-#    such pieces (both quads only with Simple as well), and the cylinder patch falls back to a free mesh, the plate with
-#    three holes and the thin L are submapped, the others are free.
+#    corner, is a lens face of four such pieces (both quads only with Simple as well), the plate with three holes, the
+#    thin L and the cylinder patch, with a ring around its hole, are submapped, the others are free.
 #    At the element size 5, without the three-sided mapping so that the triangle is meshed free as well: Simple leaves
 #    triangles on the free faces; QuadDominant gives an even number of elements around every face and quads only, none
 #    folded, a worst scaled Jacobian of 0.2 at least measured in space, the same boundary nodes as Simple where it has
 #    as many elements around the face as Simple, and no quad-dominant message. The table of both and the time are
 #    printed. Simple meshes every face as recorded, as before the quad-dominant recombination existed, but for the half
-#    disc and the disc, which are lens faces.
+#    disc and the disc, which are lens faces, and the cylinder patch, whose grid is judged on its surface.
 #  - Pinned odd totals: 25 elements on the circle of the disc, which leave it no lens grid, and 5 on every edge of the
 #    heptagon, leave exactly one triangle on each and a quad-dominant message that names the odd total. A number set on
 #    one edge of a face whose other edges are free is balanced to an even total instead.
@@ -63,11 +62,11 @@ SOLIDS = SHELLS[:8]
 # until a lens face that is submapped as well was balanced as the kind it is meshed as), the disc since the lens faces
 # of no corner exist (58 quads and 16 triangles before), on 28 elements round it since its mesh is mirrored across its
 # two planes (68 quads on 26 before); the half disc on 22 round it with a node where its plane crosses its chord (43
-# quads on 24 before), and the cylinder patch, meshed free, on the counts mirrored across its two planes (152 and 46
-# before)
+# quads on 24 before), and the cylinder patch is submapped since its grid is smoothed and judged on the cylinder itself
+# and not in the plane of its parameters, which refused it (153 quads and 56 triangles of a free mesh before)
 EXPECTED_SIMPLE = {"disc": (76, 0), "half disc": (38, 0), "triangle": (56, 23), "house": (61, 10),
                    "eccentric annulus": (58, 14), "plate with diamond": (165, 54), "three holes": (157, 0),
-                   "heptagon": (97, 31), "thin L": (17, 0), "cylinder patch": (153, 56)}
+                   "heptagon": (97, 31), "thin L": (17, 0), "cylinder patch": (140, 0)}
 CYLINDER_RADIUS = 40.0
 
 

@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CaeGlobals;
 using GmshCommon;
 
@@ -21,7 +22,8 @@ namespace CaeMesh
     /// along the parameter of the edge, so the inner loop is turned when it runs the other way round than the outer loop
     /// in the parameter space. The number of layers is RingMapping.GetNumberOfLayers of the nodes read. Loops of different
     /// numbers of elements, a grid that cannot be made, folds or has a quad corner below
-    /// SubmapFaceDetector.MinScaledJacobian leave the face as gmsh meshed it.
+    /// SubmapFaceDetector.MinScaledJacobian leave the face as gmsh meshed it. The grid of a curved surface is first
+    /// smoothed on the surface itself and judged there, in space (GmshQuadSurface.SmoothGrid).
     /// </summary>
     public static class GmshRingMesher
     {
@@ -87,14 +89,20 @@ namespace CaeMesh
                 reason = ToReason(ex.Message);
                 return false;
             }
-            if (grid.NumberOfFoldedQuads > 0)
+            // The grid of a curved surface is smoothed and judged on the surface itself
+            int numOfFoldedQuads = grid.NumberOfFoldedQuads;
+            double minScaledJacobian = grid.MinScaledJacobian;
+            GmshQuadSurface.SmoothGrid(surfaceId, outerXyz.Concat(innerXyz).ToArray(),
+                                       outerUv.Concat(innerUv).ToArray(), grid.InnerXyz, grid.InnerUv, grid.Quads, null,
+                                       ref numOfFoldedQuads, ref minScaledJacobian);
+            if (numOfFoldedQuads > 0)
             {
-                reason = grid.NumberOfFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold";
+                reason = numOfFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold";
                 return false;
             }
-            if (grid.MinScaledJacobian < SubmapFaceDetector.MinScaledJacobian)
+            if (minScaledJacobian < SubmapFaceDetector.MinScaledJacobian)
             {
-                reason = "its grid has a quad corner of the scaled Jacobian " + Math.Round(grid.MinScaledJacobian, 3) +
+                reason = "its grid has a quad corner of the scaled Jacobian " + Math.Round(minScaledJacobian, 3) +
                          ", below " + SubmapFaceDetector.MinScaledJacobian;
                 return false;
             }

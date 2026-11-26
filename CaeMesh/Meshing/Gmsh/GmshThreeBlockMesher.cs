@@ -20,8 +20,9 @@ namespace CaeMesh
     /// Meshes a three-sided face by ThreeBlockMapping, the structured mapping every mesher shares: gmsh supplies the
     /// nodes its edges carry, their parameters on the surface and the evaluation of the surface. The face is meshed
     /// by gmsh first, onto the nodes of its edges, and its elements are then replaced and turned the way gmsh turned
-    /// its own. A grid that folds is refused; on a shell the grid must also pass the gate of the other structured
-    /// faces, judged in space, or the face is left as gmsh meshed it.
+    /// its own. The grid of a curved surface is smoothed on the surface itself and its folds are counted there, in
+    /// space (GmshQuadSurface.SmoothGrid). A grid that folds is refused; on a shell the grid must also pass the gate of the
+    /// other structured faces, judged in space, or the face is left as gmsh meshed it.
     /// </summary>
     public static class GmshThreeBlockMesher
     {
@@ -48,10 +49,11 @@ namespace CaeMesh
             List<IntPtr>[] sideTags;
             List<double[]>[] sideXyz;
             double[][][] sideUv;
-            grid = Map(face, out sideTags, out sideXyz, out sideUv);
-            if (grid.NumberOfFoldedQuads > 0)
+            int numOfFoldedQuads;
+            grid = Map(face, out sideTags, out sideXyz, out sideUv, out numOfFoldedQuads);
+            if (numOfFoldedQuads > 0)
                 throw new CaeException("The three blocks of quads on Surface " + surfaceId + " fold: " +
-                                       grid.NumberOfFoldedQuads + " of its " + grid.Quads.Length +
+                                       numOfFoldedQuads + " of its " + grid.Quads.Length +
                                        " quads are inverted.");
             return Replace(surfaceId, grid, sideTags, sideUv, quads);
         }
@@ -69,18 +71,19 @@ namespace CaeMesh
             List<double[]>[] sideXyz;
             double[][][] sideUv;
             ThreeBlockGrid grid;
+            int numOfMappedFoldedQuads;
             try
             {
-                grid = Map(face, out sideTags, out sideXyz, out sideUv);
+                grid = Map(face, out sideTags, out sideXyz, out sideUv, out numOfMappedFoldedQuads);
             }
             catch (CaeException ex)
             {
                 reason = GmshLensMesher.ToReason(ex.Message);
                 return false;
             }
-            if (grid.NumberOfFoldedQuads > 0)
+            if (numOfMappedFoldedQuads > 0)
             {
-                reason = grid.NumberOfFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold";
+                reason = numOfMappedFoldedQuads + " of the " + grid.Quads.Length + " quads of its grid fold";
                 return false;
             }
             // The inner nodes are keyed by negative tags, which no node of gmsh carries
@@ -155,10 +158,13 @@ namespace CaeMesh
         }
         /// <summary>
         /// The grid of the face on the nodes of its edges, and the tags, coordinates and parameters of the nodes of
-        /// every side from its corner to the next one.
+        /// every side from its corner to the next one. The grid of a curved surface is smoothed on the surface itself,
+        /// and the number of its folded quads is the one it has there, in space (GmshQuadSurface.SmoothGrid); on a
+        /// plane the one of the mapping.
         /// </summary>
         private static ThreeBlockGrid Map(TransfiniteFace face, out List<IntPtr>[] sideTags,
-                                          out List<double[]>[] sideXyz, out double[][][] sideUv)
+                                          out List<double[]>[] sideXyz, out double[][][] sideUv,
+                                          out int numOfFoldedQuads)
         {
             int surfaceId = face.FaceId;
             sideTags = new List<IntPtr>[3];
@@ -173,12 +179,27 @@ namespace CaeMesh
             sideUv = new double[3][][];
             for (int k = 0; k < 3; k++) sideUv[k] = GetParametricCoordinates(surfaceId, sideXyz[k]);
             //
-            return ThreeBlockMapping.Map(sideUv, sideXyz.Select(xyz => xyz.ToArray()).ToArray(), uv =>
+            ThreeBlockGrid grid = ThreeBlockMapping.Map(sideUv, sideXyz.Select(xyz => xyz.ToArray()).ToArray(), uv =>
             {
                 double[] coor;
                 Gmsh.Model.GetValue(2, surfaceId, uv, out coor);
                 return coor;
             });
+            double[][] boundaryXyz = new double[grid.NumberOfBoundaryNodes][];
+            double[][] boundaryUv = new double[grid.NumberOfBoundaryNodes][];
+            for (int k = 0; k < 3; k++)
+            {
+                for (int i = 0; i < sideCounts[k]; i++)
+                {
+                    boundaryXyz[grid.GetBoundaryNodeId(k, i)] = sideXyz[k][i];
+                    boundaryUv[grid.GetBoundaryNodeId(k, i)] = sideUv[k][i];
+                }
+            }
+            numOfFoldedQuads = grid.NumberOfFoldedQuads;
+            double minScaledJacobian = 0;
+            GmshQuadSurface.SmoothGrid(surfaceId, boundaryXyz, boundaryUv, grid.InnerXyz, grid.InnerUv, grid.Quads, null,
+                                       ref numOfFoldedQuads, ref minScaledJacobian);
+            return grid;
         }
         /// <summary>
         /// Replaces what gmsh meshed on the surface by the grid, and returns the gmsh tags of the nodes of the grid.

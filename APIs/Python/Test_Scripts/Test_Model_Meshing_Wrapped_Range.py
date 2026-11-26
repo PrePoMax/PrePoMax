@@ -11,7 +11,7 @@
 #    seam of its circle, and its extrusion keeps the range): the patch (four-sided), the patch cut by an oblique plane
 #    (three-sided), the patch with a corner of 15 x 11 cut out (submapped, a reentrant corner), the patch within a half
 #    tube and within a tube of r 10 along x (lens faces of two corners and of none), the patch with a round hole of
-#    r 6 (submapped and a ring; its submapped grid is refused), the patch within a tube of radii 12 and 5 along x (a
+#    r 6 (submapped, with a ring around the hole), the patch within a tube of radii 12 and 5 along x (a
 #    ring). The torus of radii 40 and 10 revolved by 90 degrees between -45 and 45 degrees of its tube circle about its
 #    outer equator, over the seam of the tube (four-sided). Sphere and cone sectors written with the frame of their
 #    surface turned by half their angle, so that their seam runs through their middle: the band of the sphere of r 20
@@ -24,13 +24,13 @@
 #    ring.
 #  - At the element sizes 5 and 3.5 under None, Simple, QuadDominant and SimpleFullQuad: the kind the detection finds,
 #    the number of inner nodes without four quads of that kind under Simple, QuadDominant and SimpleFullQuad (0
-#    four-sided, submapped and ring, 1 three-sided, 2 lens of two corners, 4 lens of none, 3 reentrant pole), quads
+#    four-sided, submapped and ring, 1 three-sided, 2 lens of two corners, 4 lens of none, 3 reentrant pole, and 4 of
+#    five quads where the submapped grid meets the ring around the hole), quads
 #    only, two triangles per quad under None, a worst scaled Jacobian of 0.5 at least measured in space against the
 #    normals of the mesh (a corner at a pole against the normal of its element), no message; the area of the mesh within
 #    3 % of the area of the face and every node within 0.5 of the box of the geometry, so no node lies on the other side
-#    of the surface. The patch with the hole, and its twin, write the submapping message and are meshed free, no fold;
-#    under the full-quad recombination their free mesh keeps triangles (gmsh recombines no face of a periodic surface
-#    into full quads, so a structured face of a cylinder is left out of that recombination and laid after it).
+#    of the surface. The grid of the patch with the hole, and of its twin, is smoothed and judged on the cylinder
+#    itself; the plane of its parameters, in which it was judged before, refused it.
 #  - The twins give the same quads, triangles, irregular inner nodes and worst scaled Jacobian within 1E-3 as the
 #    faces across the seam.
 #  The model was made by gmsh's OCC kernel through GmshCommon (generator Models/Generators/Make_Pole_Faces.py). With
@@ -66,7 +66,7 @@ SHAPES = [("cylinder patch", "transfinite 4", 0, 942.48),
           ("cylinder notch", "submapped", 0, 752.03),
           ("cylinder half disc", "submapped lens 2", 2, 238.08),
           ("cylinder disc", "lens 0", 4, 325.04),
-          ("cylinder hole", "submapped ring", None, 828.06),
+          ("cylinder hole", "submapped ring", 4, 828.06),
           ("torus patch", "transfinite 4", 0, 1209.1),
           ("sphere band wrapped", "transfinite 4", 0, 481.32),
           ("dome 90 wrapped", "transfinite 3", 1, 628.32),
@@ -76,7 +76,7 @@ SHAPES = [("cylinder patch", "transfinite 4", 0, 942.48),
           ("cone frustum wrapped", "transfinite 4", 0, 333.22),
           ("dome 90 cut wrapped", "transfinite 4", 0, 251.33),
           ("dome 270 wrapped", "lens 2 reentrant", 3, 1884.96),
-          ("cylinder hole plain", "submapped ring", None, 828.07),
+          ("cylinder hole plain", "submapped ring", 4, 828.07),
           ("cylinder patch plain", "transfinite 4", 0, 942.48),
           ("dome 90 cut plain", "transfinite 4", 0, 251.33),
           ("cylinder triangle plain", "transfinite 3", 1, 269.23),
@@ -367,19 +367,18 @@ def check_shapes(parts, size):
                   str(round(face.area(), 2)) + " against the face of " + str(area) + ", and " + str(outside) +
                   " nodes outside the box of the geometry")
             check(quality > 0, title + " has a folded element: " + str(quality))
-            if irregular_count is None:
-                check(len(messages) == 1 and messages[0].startswith("Submapping:") and "is meshed free" in messages[0],
-                      title + " wrote " + str(messages))
+            check(len(messages) == 0, title + " wrote: " + str(messages))
+            if recombine == "None":
+                check(quads == 0 and triangles % 2 == 0, title + " has " + str(face.kinds()))
             else:
-                check(len(messages) == 0, title + " wrote: " + str(messages))
-                if recombine == "None":
-                    check(quads == 0 and triangles % 2 == 0, title + " has " + str(face.kinds()))
-                else:
-                    check(triangles == 0 and len(irregular) == irregular_count and
-                          all(valence[node] == 3 for node in irregular), title + " has " + str(face.kinds()) +
-                          " and the irregular inner nodes " + str(sorted(valence[node] for node in irregular)) +
-                          ", not " + str(irregular_count) + " of 3")
-                    check(quality >= GOOD, title + " has a corner of the scaled Jacobian " + str(quality))
+                # The grid meets the ring around a hole at four nodes of five quads
+                expected_valence = 5 if kind == "submapped ring" else 3
+                check(triangles == 0 and len(irregular) == irregular_count and
+                      all(valence[node] == expected_valence for node in irregular), title + " has " +
+                      str(face.kinds()) + " and the irregular inner nodes " +
+                      str(sorted(valence[node] for node in irregular)) + ", not " + str(irregular_count) + " of " +
+                      str(expected_valence))
+                check(quality >= GOOD, title + " has a corner of the scaled Jacobian " + str(quality))
             if recombine == "QuadDominant":
                 plot("wrapped_" + name.replace(" ", "_") + "_" + str(size).replace(".", "_"), title + ": " +
                      str(quads) + " quads, worst SJ " + str(round(quality, 3)), face)

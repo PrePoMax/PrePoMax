@@ -19,30 +19,29 @@ namespace CaeMesh
     /// <summary>
     /// Turns the quads and triangles gmsh meshed free on a face into quads only by QuadCleanup, on the nodes gmsh
     /// placed on the edges of the face: the elements and nodes of the face are read from gmsh, with their parameters on
-    /// the surface, the cleanup works in the frame of ThreeBlockMapping that is close to isometric over the boundary of
-    /// the face, the inner nodes are evaluated on the surface and the elements of the face are replaced, turning the
-    /// way gmsh turned its own. The result is kept only when it is better: fewer triangles than before - none, one when
-    /// the elements around the boundary add up to an odd number, or the few the cleanup found no good way to join - no
-    /// folded element, and no corner of a scaled Jacobian below SubmapFaceDetector.MinScaledJacobian, below what the
-    /// sharpest corner of the boundary allows (half its sine, for a corner below 90 degrees in space) or below the
-    /// worst corner gmsh left, whichever is lowest, measured in space against the normal of the surface. Parameters
-    /// that fold gmsh's own mesh in the frame, as those of a sliver of a blend that squeeze its corner, give way to the
-    /// projection on the mean plane of the face when that folds none of its elements; the inner nodes are then placed
-    /// at the points of the surface nearest to the plane. A face gmsh meshed with quads only is cleaned as well, for
-    /// its valences and its corners, and kept only with no fold, no more irregular inner nodes and no corner below the
-    /// worst one gmsh left. A face of a periodic surface closed along one seam or two - a cylinder, a cone, a torus, a
-    /// surface of revolution or extrusion - is cut open along them first (CutAlongSeams): a node on a seam is then a
-    /// fixed node once for each side of the seam, with the parameters of that side, and is written back as the one node
-    /// gmsh placed; the result is not kept when an element would then use a node twice or two elements the same nodes.
-    /// A face that carries curves or points inside it is cut open along the curves (CutAlongEmbeddedEdges) the same
-    /// way, its nodes on them fixed, so that the cleanup neither moves nor crosses them. A face with a degenerate edge,
-    /// a pole, that gmsh left triangles on is cleaned in the projection on its mean plane, or in the conformal chart
-    /// round the pole (GmshPoleChart) when the projection folds an element, a seam of it then being a curve inside it,
-    /// and its corners at the pole measured against the mean normal of its elements there; it is left as gmsh meshed it
-    /// when both fold, and so is one gmsh meshed with quads only. Such a face has no even total in the balance. A
-    /// cleaned mesh of the last passes of the cleanup, which add nodes, is kept only when its worst element shape in
-    /// space is not below 0.2 or below gmsh's, whichever is lower. A face whose parameters do not run evenly over it,
-    /// or with a curve inside it and a seam, is left as gmsh meshed it.
+    /// the surface, and the elements of the face are replaced, turning the way gmsh turned its own. A face of a curved
+    /// surface is cleaned on the surface itself, in space, against the normals of the surface at its nodes
+    /// (GmshQuadSurface), so that neither its parameters nor a pole of it matter, and every inner node is then
+    /// smoothed once more on the surface (GmshQuadSurface.SmoothGrid); a plane face is cleaned in the frame of
+    /// ThreeBlockMapping of its parameters, which is the plane itself. The result is kept only when it is better: fewer
+    /// triangles than before - none, one when the elements around the boundary add up to an odd number, or the few the
+    /// cleanup found no good way to join - no folded element, and no corner of a scaled Jacobian below
+    /// SubmapFaceDetector.MinScaledJacobian, below what the sharpest corner of the boundary allows (half its sine, for
+    /// a corner below 90 degrees in space) or below the worst corner gmsh left, whichever is lowest, measured in space
+    /// against the normal of the surface. A face gmsh meshed with quads only is cleaned as well, for its valences and
+    /// its corners, and kept only with no fold, no more irregular inner nodes and no corner below the worst one gmsh
+    /// left. A face of a periodic surface closed along one seam or two - a cylinder, a cone, a torus, a surface of
+    /// revolution or extrusion - is cut open along them first (CutAlongSeams): a node on a seam is then a fixed node
+    /// once for each side of the seam and is written back as the one node gmsh placed; the result is not kept when an
+    /// element would then use a node twice or two elements the same nodes. A face that carries curves or points
+    /// inside it is cut open along the curves (CutAlongEmbeddedEdges) the same way, its nodes on them fixed, so that
+    /// the cleanup neither moves nor crosses them. A face with a degenerate edge, a pole, that gmsh left triangles on
+    /// has the pole as one fixed node, a seam of it being a curve inside it, and its corners at the pole are measured
+    /// against the mean normal of its elements there; one gmsh meshed with quads only is left as it is. Such a face
+    /// has no even total in the balance. A cleaned mesh of the last passes of the cleanup, which add nodes, is kept
+    /// only when its worst element shape in space is not below 0.2 or below gmsh's, whichever is lower. A plane face
+    /// whose parameters do not run evenly over it, or a face with a curve inside it and a seam, is left as gmsh
+    /// meshed it.
     /// </summary>
     public static class GmshQuadMesher
     {
@@ -100,8 +99,8 @@ namespace CaeMesh
                     return false;
                 }
             }
-            // A degenerate edge, a pole, is one node of the boundary in space but a line in the parameters, so such a
-            // face is cleaned in the projection on its mean plane, where a seam is no cut but a curve inside the face
+            // A degenerate edge, a pole, is one node of the boundary in space, where a seam of the face is no cut but
+            // a curve inside it
             double faceSize = GetFaceSize(surfaceId);
             int degenerateEdgeId = uniqueEdgeIds.FirstOrDefault(edgeId => IsDegenerateEdge(edgeId, faceSize));
             bool poled = degenerateEdgeId != 0;
@@ -223,44 +222,28 @@ namespace CaeMesh
                 elements = cutElements;
             }
             List<int[]> segments = GetBoundarySegments(elements);
-            double[][][] segmentUv = new double[segments.Count][][];
-            double[][][] segmentXyz = new double[segments.Count][][];
-            for (int s = 0; s < segments.Count; s++)
+            // A face of a curved surface is cleaned on the surface itself, in space, a plane one in the frame of its
+            // parameters
+            bool curved = Gmsh.Model.GetType(2, surfaceId) != "Plane";
+            double[] w = null;
+            double[][] points = null;
+            if (!curved)
             {
-                segmentUv[s] = new double[][] { uv[segments[s][0]], uv[segments[s][1]] };
-                segmentXyz[s] = new double[][] { xyz[segments[s][0]], xyz[segments[s][1]] };
-            }
-            double[] w = GetFrame(segmentUv, segmentXyz);
-            double[][] points = new double[numOfNodes][];
-            for (int i = 0; i < numOfNodes; i++) points[i] = ThreeBlockMapping.ToFrame(w, uv[i]);
-            // Parameters that fold gmsh's own mesh, as those of a sliver of a blend whose corner they squeeze, give way
-            // to the projection on the mean plane of the face when that folds none of its elements
-            double[][] plane = null;
-            if (!cut && (poled || CountFoldedElements(points, elements) > 0))
-            {
-                double[][] projected = GetProjectedPoints(xyz, elements, out plane);
-                if (projected != null && CountFoldedElements(projected, elements) == 0) points = projected;
-                else plane = null;
-            }
-            // A pole face the projection folds, a cap reaching beyond its equator, takes the conformal chart round the
-            // pole
-            GmshPoleChart chart = null;
-            if (poled && plane == null)
-            {
-                chart = GetPoleChart(surfaceId, degenerateEdgeId, nodeTags, xyz, uv, numOfBoundaryNodes, faceSize);
-                double[][] charted = chart == null ? null : uv.Select(chart.ToChart).ToArray();
-                if (charted != null && CountFoldedElements(charted, elements) == 0) points = charted;
-                else
+                double[][][] segmentUv = new double[segments.Count][][];
+                double[][][] segmentXyz = new double[segments.Count][][];
+                for (int s = 0; s < segments.Count; s++)
                 {
-                    reason = "Edge " + degenerateEdgeId + " of it is degenerate and neither its projection on its " +
-                             "mean plane nor its chart round the pole keep its elements unfolded";
+                    segmentUv[s] = new double[][] { uv[segments[s][0]], uv[segments[s][1]] };
+                    segmentXyz[s] = new double[][] { xyz[segments[s][0]], xyz[segments[s][1]] };
+                }
+                w = GetFrame(segmentUv, segmentXyz);
+                points = new double[numOfNodes][];
+                for (int i = 0; i < numOfNodes; i++) points[i] = ThreeBlockMapping.ToFrame(w, uv[i]);
+                if (!AreAreasOfOneSign(points, elements))
+                {
+                    reason = "its parameters do not run evenly over it";
                     return false;
                 }
-            }
-            if (!AreAreasOfOneSign(points, elements))
-            {
-                reason = "its parameters do not run evenly over it";
-                return false;
             }
             bool oddTotal = numOfBoundarySegments % 2 == 1;
             string oddReason = OddTotalReason + ", " + numOfBoundarySegments;
@@ -279,29 +262,19 @@ namespace CaeMesh
                     if (poleTags.Contains(nodeTags[i])) poleNodes.Add(i);
                 }
             }
-            // A cleaned mesh that is not kept in space is tried again in the projection on the mean plane of the face,
-            // and last as the cleanup made it before its last passes, which keeps the triangles they would have joined
-            double[][] framePoints = points;
-            double[][] framePlane = plane;
+            // The unit normals of the surface at the nodes, none at a pole, and the way the elements turn round them
+            double[][] normals = null;
+            double orientation = 0;
+            if (curved)
+                normals = GmshQuadSurface.GetUnitNormals(surfaceId, xyz, uv, elements, poleNodes, out orientation);
+            // A cleaned mesh that is not kept is tried again as the cleanup made it before its last passes, which keeps
+            // the triangles they would have joined
             string firstReason = null;
-            for (int attempt = 0; attempt < 3; attempt++)
+            for (int attempt = 0; attempt < 2; attempt++)
             {
                 if (attempt > 0 && triangleFree) break;
-                if (attempt == 1)
-                {
-                    if (cut || framePlane != null || chart != null) continue;
-                    points = GetProjectedPoints(xyz, elements, out plane);
-                    if (points == null || CountFoldedElements(points, elements) > 0 ||
-                        !AreAreasOfOneSign(points, elements))
-                        continue;
-                }
-                else if (attempt == 2)
-                {
-                    points = framePoints;
-                    plane = framePlane;
-                }
-                if (TryClean(surfaceId, points, plane, chart, w, attempt < 2, fixedNodes, elements, xyz, uv, nodeTags,
-                             numOfBoundaryNodes, segments, cut, embedded, triangleFree, numOfTriangles, rimTags,
+                if (TryClean(surfaceId, points, w, normals, orientation, attempt == 0, fixedNodes, elements, xyz, uv,
+                             nodeTags, numOfBoundaryNodes, segments, cut, embedded, triangleFree, numOfTriangles, rimTags,
                              gmshElements, poleNodes, oddTotal ? oddReason : null, out numOfTriangles, out reason))
                     return true;
                 if (firstReason == null) firstReason = reason ?? "";
@@ -310,13 +283,14 @@ namespace CaeMesh
             return false;
         }
         /// <summary>
-        /// Cleans the elements of the face given in the plane frame, in the projection plane when plane is not null,
-        /// with the last passes of the cleanup or without them, and replaces the elements of the face when the result
-        /// is kept. Returns whether it was kept; numOfTriangles is then the number of triangles the face keeps, and
-        /// reason why.
+        /// Cleans the elements of the face, on its surface in space when the normals at its nodes are given and else in
+        /// the plane frame of its points, with the last passes of the cleanup or without them, and replaces the
+        /// elements of the face when the result is kept. Returns whether it was kept; numOfTriangles is then the number
+        /// of triangles the face keeps, and reason why.
         /// </summary>
-        private static bool TryClean(int surfaceId, double[][] points, double[][] plane, GmshPoleChart chart,
-                                     double[] w, bool lastPasses, bool[] fixedNodes, int[][] elements, double[][] xyz,
+        private static bool TryClean(int surfaceId, double[][] points, double[] w, double[][] normals,
+                                     double cleanupOrientation, bool lastPasses, bool[] fixedNodes, int[][] elements,
+                                     double[][] xyz,
                                      double[][] uv, List<IntPtr> nodeTags, int numOfBoundaryNodes, List<int[]> segments,
                                      bool cut, bool embedded, bool triangleFree, int numOfGmshTriangles,
                                      HashSet<IntPtr> rimTags, List<IntPtr[]> gmshElements, HashSet<int> poleNodes,
@@ -328,7 +302,13 @@ namespace CaeMesh
             QuadCleanupResult result;
             try
             {
-                result = QuadCleanup.Clean(points, elements, fixedNodes, lastPasses);
+                if (normals == null) result = QuadCleanup.Clean(points, elements, fixedNodes, lastPasses);
+                else
+                {
+                    GmshQuadSurface surface = new GmshQuadSurface(surfaceId, null, GmshQuadSurface.GetSize(xyz));
+                    result = QuadCleanup.Clean(xyz, normals, cleanupOrientation, surface, elements, fixedNodes,
+                                               lastPasses);
+                }
             }
             catch (CaeException ex)
             {
@@ -359,12 +339,11 @@ namespace CaeMesh
                 else if (result.IsNodeUsed[i])
                 {
                     newIds[i] = numOfBoundaryNodes + innerUv.Count;
-                    innerUv.Add(chart != null ? chart.ToUv(result.Points[i]) :
-                                plane == null ? ThreeBlockMapping.FromFrame(w, result.Points[i]) : null);
+                    innerUv.Add(normals != null ? null : ThreeBlockMapping.FromFrame(w, result.Points[i]));
                 }
                 else newIds[i] = -1;
             }
-            if (plane != null && !SetPlaneParameters(surfaceId, plane, result, numOfBoundaryNodes, innerUv))
+            if (normals != null && !SetSpaceParameters(surfaceId, result, numOfBoundaryNodes, innerUv))
             {
                 reason = "its inner nodes could not be placed on its surface";
                 return false;
@@ -402,6 +381,11 @@ namespace CaeMesh
                                                                                    .ToArray()), rimTags))
                     return false;
             }
+            // Every inner node of a curved face smoothed once more on its surface
+            double[][] innerUvArray = innerUv.ToArray();
+            GmshQuadSurface.SmoothGrid(surfaceId, GetRange(xyz, numOfBoundaryNodes), GetRange(uv, numOfBoundaryNodes),
+                                       innerXyz, innerUvArray, newElements, poleNodes);
+            innerUv = new List<double[]>(innerUvArray);
             // The quality in space, against the normal of the surface, turned the way gmsh's elements turn
             double[][] newXyz = new double[numOfBoundaryNodes + innerXyz.Length][];
             double[][] newUv = new double[newXyz.Length][];
@@ -452,6 +436,12 @@ namespace CaeMesh
             reason = numOfTriangles == 0 ? null :
                      oddReason != null && numOfTriangles == 1 ? oddReason : notJoinedReason;
             return true;
+        }
+        private static double[][] GetRange(double[][] array, int count)
+        {
+            double[][] range = new double[count][];
+            Array.Copy(array, range, count);
+            return range;
         }
         /// <summary>
         /// The edges of a face whose numbers of elements add up to the parity of the elements around it, from the edges
@@ -697,29 +687,6 @@ namespace CaeMesh
                 if (inside) embeddedEdges.UnionWith(segments);
             }
             return embeddedEdges;
-        }
-        /// <summary>
-        /// The chart of the face round the pole at its degenerate edge, over the parameters of its other fixed nodes;
-        /// null when the pole is not one of its surface.
-        /// </summary>
-        private static GmshPoleChart GetPoleChart(int surfaceId, int degenerateEdgeId, List<IntPtr> nodeTags,
-                                                  double[][] xyz, double[][] uv, int numOfFixedNodes, double faceSize)
-        {
-            IntPtr[] tags;
-            Gmsh.Model.Mesh.GetNodes(out tags, out _, 1, degenerateEdgeId, true, false);
-            HashSet<IntPtr> poleTags = new HashSet<IntPtr>(tags);
-            int pole = nodeTags.FindIndex(poleTags.Contains);
-            if (pole < 0) return null;
-            int p;
-            double poleV;
-            double farV;
-            if (!GmshPoleChart.FindPole(surfaceId, xyz[pole], faceSize, out p, out poleV, out farV)) return null;
-            List<double[]> faceUv = new List<double[]>();
-            for (int i = 0; i < numOfFixedNodes; i++)
-            {
-                if (!poleTags.Contains(nodeTags[i])) faceUv.Add(uv[i]);
-            }
-            return new GmshPoleChart(surfaceId, xyz[pole], p, poleV, farV, faceUv);
         }
         /// <summary>
         /// The edges of the mesh, by the ids of their nodes, on the given curves.
@@ -1013,82 +980,15 @@ namespace CaeMesh
             return floor;
         }
         /// <summary>
-        /// The elements with a corner that folds or has no area, against the way most of the area turns.
+        /// The parameters of the inner nodes the cleanup placed on the surface; false when they could not be found.
         /// </summary>
-        private static int CountFoldedElements(double[][] points, int[][] elements)
-        {
-            double area = 0;
-            foreach (var element in elements)
-            {
-                for (int c = 0; c < element.Length; c++)
-                {
-                    double[] p = points[element[c]];
-                    double[] q = points[element[(c + 1) % element.Length]];
-                    area += p[0] * q[1] - q[0] * p[1];
-                }
-            }
-            return QuadSmoothing.CountFoldedElements(points, elements, area < 0 ? -1 : 1);
-        }
-        /// <summary>
-        /// The nodes projected on the plane through their centre normal to the mean normal of the elements, and the
-        /// plane as its origin and two axes; null when the elements have no mean normal.
-        /// </summary>
-        private static double[][] GetProjectedPoints(double[][] xyz, int[][] elements, out double[][] plane)
-        {
-            plane = null;
-            double[] normal = new double[3];
-            foreach (var element in elements)
-            {
-                double[] a = xyz[element[0]];
-                double[] b = xyz[element[1]];
-                double[] c = xyz[element[2]];
-                double[] d = element.Length == 4 ? xyz[element[3]] : a;
-                double[] first = new double[] { c[0] - a[0], c[1] - a[1], c[2] - a[2] };
-                double[] second = new double[] { d[0] - b[0], d[1] - b[1], d[2] - b[2] };
-                if (element.Length == 3) second = new double[] { a[0] - b[0], a[1] - b[1], a[2] - b[2] };
-                normal[0] += first[1] * second[2] - first[2] * second[1];
-                normal[1] += first[2] * second[0] - first[0] * second[2];
-                normal[2] += first[0] * second[1] - first[1] * second[0];
-            }
-            double length = Math.Sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-            if (!(length > 0)) return null;
-            for (int k = 0; k < 3; k++) normal[k] /= length;
-            double[] axisU = Math.Abs(normal[0]) < 0.9 ? new double[] { 1, 0, 0 } : new double[] { 0, 1, 0 };
-            double along = axisU[0] * normal[0] + axisU[1] * normal[1] + axisU[2] * normal[2];
-            for (int k = 0; k < 3; k++) axisU[k] -= along * normal[k];
-            length = Math.Sqrt(axisU[0] * axisU[0] + axisU[1] * axisU[1] + axisU[2] * axisU[2]);
-            for (int k = 0; k < 3; k++) axisU[k] /= length;
-            double[] axisV = new double[] { normal[1] * axisU[2] - normal[2] * axisU[1],
-                                            normal[2] * axisU[0] - normal[0] * axisU[2],
-                                            normal[0] * axisU[1] - normal[1] * axisU[0] };
-            double[] origin = new double[3];
-            foreach (var p in xyz)
-            {
-                for (int k = 0; k < 3; k++) origin[k] += p[k] / xyz.Length;
-            }
-            double[][] points = new double[xyz.Length][];
-            for (int i = 0; i < xyz.Length; i++)
-            {
-                double[] r = new double[] { xyz[i][0] - origin[0], xyz[i][1] - origin[1], xyz[i][2] - origin[2] };
-                points[i] = new double[] { r[0] * axisU[0] + r[1] * axisU[1] + r[2] * axisU[2],
-                                           r[0] * axisV[0] + r[1] * axisV[1] + r[2] * axisV[2] };
-            }
-            plane = new double[][] { origin, axisU, axisV };
-            return points;
-        }
-        /// <summary>
-        /// The parameters of the inner nodes the cleanup placed in the projection plane, at the points of the surface
-        /// nearest to them; false when they could not be found.
-        /// </summary>
-        private static bool SetPlaneParameters(int surfaceId, double[][] plane, QuadCleanupResult result,
-                                               int numOfBoundaryNodes, List<double[]> innerUv)
+        private static bool SetSpaceParameters(int surfaceId, QuadCleanupResult result, int numOfBoundaryNodes,
+                                               List<double[]> innerUv)
         {
             List<double> flatXyz = new List<double>();
             for (int i = numOfBoundaryNodes; i < result.Points.Length; i++)
             {
-                if (!result.IsNodeUsed[i]) continue;
-                for (int k = 0; k < 3; k++)
-                    flatXyz.Add(plane[0][k] + result.Points[i][0] * plane[1][k] + result.Points[i][1] * plane[2][k]);
+                if (result.IsNodeUsed[i]) flatXyz.AddRange(result.Points[i]);
             }
             if (flatXyz.Count == 0) return true;
             double[] flatUv;

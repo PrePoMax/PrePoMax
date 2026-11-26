@@ -19,10 +19,13 @@
 #    edge ("Impossible to mesh periodic surface").
 #    At the element sizes 5 and 3.5, against gmsh's own meshes under Simple and Blossom (the base of QuadDominant):
 #    every face but the sphere ends with quads only, an even number of elements around it, no fold, a worst scaled
-#    Jacobian of 0.2 at least measured in space against the normal of its surface, every boundary node on an edge around
-#    the face, as many nodes on the seams as Blossom has where the totals agree, every node once (no two nodes at one
-#    point, so the seam is not torn open), no element with a node twice and no quad-dominant message. The boundary nodes
-#    are not compared with Blossom's one by one: the balance meshes the curves once before the mesh, and gmsh then lays
+#    Jacobian of 0.2 at least measured in space against the normal of its surface (0.6 on the cylinder, the pipe with a
+#    hole, the cone frustum, the two splines and the elbow, whose inner nodes are smoothed on the surface itself once
+#    the face is cleaned: in the flat picture of the surface alone they stay at 0.47 to 0.6), every boundary node on
+#    an edge around the face, as many nodes on the seams as Blossom has where the totals agree, every node once (no
+#    two nodes at one point, so the seam is not torn open), no element with a node twice and no quad-dominant
+#    message. The boundary nodes are not compared with Blossom's one by one: the balance meshes the curves once
+#    before the mesh, and gmsh then lays
 #    some of them a little differently (the hole across the seam by up to 0.6 mm at the same counts). The sphere, whose
 #    poles are degenerate edges, keeps the mesh gmsh gave it under Blossom (and its message, should that mesh have
 #    triangles). The table of the three and the time are printed; Blossom is a run of its own, so its worst corner is
@@ -65,6 +68,8 @@ PLOT_DIR = os.environ.get("PMX_QUAD_PLOT_DIR")
 SIZES = [5.0, 3.5]
 SPACING = 150.0
 FLOOR = 0.2
+SMOOTHED_FLOOR = 0.6
+SMOOTHED = ["cylinder", "pipe with hole", "cone frustum", "revolved spline", "extruded spline", "elbow"]
 RIM_TOLERANCE = 1E-4
 SHELLS = ["cylinder", "pipe with hole", "hole on seam", "cone frustum", "torus with hole", "revolved spline", "sphere",
           "extruded spline", "pipe tee", "elbow"]
@@ -458,6 +463,8 @@ def check_shells(parts, size):
             check(total % 2 == 0, "the " + name + " has an odd number of elements around it with QuadDominant, " + str(total))
             check(triangles == 0, "the " + name + " keeps " + str(triangles) + " triangles with QuadDominant")
             check(quality >= FLOOR, "the " + name + " has a corner of the scaled Jacobian " + str(quality))
+            check(name not in SMOOTHED or quality >= SMOOTHED_FLOOR, "the " + name + " is not smoothed on its " +
+                  "surface, it has a corner of the scaled Jacobian " + str(quality))
             check(len(messages) == 0, "the " + name + " wrote: " + str(messages))
             off = [face.xyz[node] for node in boundary_nodes(face.elements) if not on_rim(name, face.xyz[node], dx)]
             check(len(off) == 0, "the " + name + " has boundary nodes off its edges with QuadDominant: " + str(off[:3]))

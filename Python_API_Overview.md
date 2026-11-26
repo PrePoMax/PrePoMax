@@ -1167,9 +1167,13 @@ half cylinder carries the count of the cylinder. A thin lens face, whose line wo
 more elements than its length asks for because its sides carry different counts (a flat circular segment, whose arc is
 given more elements than its chord), also asks for equal counts on its two sides, at the weakest tier, which never
 changes a number set on an edge or a structured face. Once its pieces are laid, the nodes inside the face (those of the
-line included) are smoothed together, in the parameters of the surface or in the chart of its one pole, so that the
-grid lines run on smoothly across the line; the smoothed grid is kept only when it is no worse in space, and a face with
-two poles is not smoothed. A lens face is meshed on the nodes of its edges before
+line included) are smoothed together on the surface itself, in space, so that the grid lines run on smoothly across
+the line on any surface, a pole or a seam of it no obstacle; the smoothed grid is kept only when it is no worse in
+space. The grid of a submapped, a ring and a 3-sided face on a curved surface is smoothed on the surface the same way
+once it is laid, and only then judged, in space: the flat picture of a curved surface a grid is laid in keeps its
+lengths and angles only roughly, so a grid that folds or looks squeezed there may lie well on the surface. A curved
+face turned into quads is converted on the surface itself as well, a plane one in its plane. A lens face is meshed on
+the nodes of its edges before
 gmsh meshes the other surfaces, like a cap; numbers set on its edges that leave an odd sum, a side below 4 or a loop of
 one corner or none below 8, and a grid that would fold or have a quad corner below 0.2, leave it to gmsh, meshed free
 ("Lens mapping: Surface N is meshed free - reason"). A lens face that is submapped as well (a planar half disc, a
@@ -1294,11 +1298,10 @@ one or none - a disc, a teardrop - a lens face; only one the tube, the cap or th
 A face with an edge or a point inside it is converted with its nodes there kept in place and its edge inside never
 crossed; the edge does not count in the even total, since the face meets it on both sides. A face with a degenerate
 edge (the pole of a sphere, the apex of a cone) that is no cap, lens, 3- or 4-sided face, or a face the cap or the
-lens face leaves free, and on which gmsh left triangles, is converted in its projection on its mean plane or, where
-that folds an element, in the conformal chart round its pole; it has no even total of its own, which the message of
-one left with an odd total says. One that neither
-unfolds, a cap reaching far beyond its equator, one gmsh meshed with quads only, and a face with an edge inside it
-that is closed along a seam are, for now, kept as gmsh meshed them.
+lens face leaves free, and on which gmsh left triangles, is converted on its surface as every curved face, the pole
+one node of it; it has no even total of its own, which the message of one left with an odd total says. One gmsh
+meshed with quads only, and a face with an edge inside it that is closed along a seam are, for now, kept as gmsh
+meshed them.
 A face gmsh meshed with quads only has its valences evened out and its nodes smoothed in the same way, which is kept
 only when it leaves no more irregular inner nodes, no fold and no worse corner.
 Second order elements and the full-quad recombinations work as before; gmsh refuses a full-quad recombination of a

@@ -179,6 +179,7 @@
     <Compile Include="Meshing\Gmsh\GmshMirrorSplits.cs" />
     <Compile Include="Meshing\Gmsh\GmshPoleChart.cs" />
     <Compile Include="Meshing\Gmsh\GmshQuadMesher.cs" />
+    <Compile Include="Meshing\Gmsh\GmshQuadSurface.cs" />
     <Compile Include="Meshing\Gmsh\GmshRingMesher.cs" />
     <Compile Include="Meshing\Gmsh\GmshSeamGridMesher.cs" />
     <Compile Include="Meshing\Gmsh\GmshShellGridQuality.cs" />
@@ -210,6 +211,7 @@
     <Compile Include="Meshing\Transfinite\TransfiniteSideTriple.cs" />
     <Compile Include="Meshing\Quad\QuadCleanup.cs" />
     <Compile Include="Meshing\Quad\QuadCleanupResult.cs" />
+    <Compile Include="Meshing\Quad\IQuadSurface.cs" />
     <Compile Include="Meshing\Quad\QuadSmoothing.cs" />
     <Compile Include="Meshing\Ring\RingFace.cs" />
     <Compile Include="Meshing\Ring\RingFaceDetector.cs" />

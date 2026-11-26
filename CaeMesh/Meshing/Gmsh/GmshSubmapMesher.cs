@@ -21,8 +21,9 @@ namespace CaeMesh
     /// GmshThreeBlockMesher meshes a three-sided face: gmsh supplies the nodes its edges carry, their parameters on
     /// the surface and the evaluation of the surface, and the elements gmsh meshed on the face are replaced. A grid
     /// that cannot be made, folds or has a quad corner below SubmapFaceDetector.MinScaledJacobian leaves the face as
-    /// gmsh meshed it. An edge that turns in its middle is split at its middle node into the two logical edges of the
-    /// face, so it needs an even number of elements; one that turns twice at its nodes at a quarter and three quarters
+    /// gmsh meshed it; the grid of a curved surface, its rings included, is first smoothed on the surface itself and
+    /// judged there, in space (GmshQuadSurface.SmoothGrid). An edge that turns in its middle is split at its middle
+    /// node into the two logical edges of the face, so it needs an even number of elements; one that turns twice at its nodes at a quarter and three quarters
     /// into three, so it needs a multiple of four. The nodes of the holes of a face are read loop by loop as those of
     /// its outer loop, and the holes are placed in the lattice by SubmapHolePlacement on the parameters of the nodes;
     /// a hole for which no place is found leaves the face as gmsh meshed it. The nodes of a round hole are read around
@@ -204,8 +205,8 @@ namespace CaeMesh
             int surfaceId = face.FaceId;
             SubmapFace[] loops = face.Loops;
             int[][] loopDirections = face.LoopLogicalEdgeDirections;
-            keepOrthogonal = keepOrthogonal && loops.All(loop => !loop.IsRound) &&
-                             Gmsh.Model.GetType(2, surfaceId) == "Plane";
+            bool curved = Gmsh.Model.GetType(2, surfaceId) != "Plane";
+            keepOrthogonal = keepOrthogonal && loops.All(loop => !loop.IsRound) && !curved;
             double[][][][] gridXyz;
             double[][][][] gridUv;
             GetRingLoops(surfaceId, loops, loopXyz, loopUv, out gridXyz, out gridUv);
@@ -228,6 +229,33 @@ namespace CaeMesh
             double minScaledJacobian = grid.MinScaledJacobian;
             AddRings(surfaceId, grid, loopXyz, loopUv, gridXyz, gridUv, out quads, out innerUv, out innerXyz,
                      ref numOfFoldedQuads, ref minScaledJacobian);
+            // The grid of a curved surface, with its rings, is smoothed and judged on the surface itself; a pole of the
+            // surface at a corner has no normal there
+            if (curved)
+            {
+                HashSet<IntPtr> poleTags = GetPoleTags(surfaceId, loopTags, loopXyz.SelectMany(loop => loop)
+                                                                                   .Select(side => side[0]).ToList());
+                HashSet<int> poleNodes = new HashSet<int>();
+                double[][] boundaryXyz = new double[grid.NumberOfBoundaryNodes][];
+                double[][] boundaryUv = new double[grid.NumberOfBoundaryNodes][];
+                int edge = 0;
+                for (int l = 0; l < loopUv.Length; l++)
+                {
+                    for (int k = 0; k < loopUv[l].Length; k++, edge++)
+                    {
+                        if (poleTags.Contains(loopTags[l][k][0])) poleNodes.Add(grid.GetBoundaryNodeId(edge, 0));
+                        for (int i = 0; i < grid.EdgeCounts[edge]; i++)
+                        {
+                            boundaryXyz[grid.GetBoundaryNodeId(edge, i)] = loopXyz[l][k][i];
+                            boundaryUv[grid.GetBoundaryNodeId(edge, i)] = loopUv[l][k][i];
+                        }
+                    }
+                }
+                innerXyz = (double[][])innerXyz.Clone();
+                innerUv = (double[][])innerUv.Clone();
+                GmshQuadSurface.SmoothGrid(surfaceId, boundaryXyz, boundaryUv, innerXyz, innerUv, quads, poleNodes,
+                                           ref numOfFoldedQuads, ref minScaledJacobian);
+            }
             if (numOfFoldedQuads > 0)
             {
                 reason = numOfFoldedQuads + " of the " + quads.Length + " quads of its grid fold";

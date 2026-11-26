@@ -70,6 +70,11 @@ namespace CaeMesh
     /// neighbours are smoothed by QuadSmoothing.SmoothRegion, which never lowers the worst corner.
     /// The quality of a corner is its scaled Jacobian, a triangle scaled so that 60 degrees count as 1. The arithmetic
     /// is plain and ordered and every choice is made in the order of the ids, so that a port gives the same mesh.
+    /// The mesh of a face of a curved surface is cleaned on the surface itself, in space, for which no plane frame is
+    /// needed: the nodes are given by their coordinates with the unit normals of the surface at them, a corner is
+    /// measured against the normal at its node (QuadSmoothing.GetSpaceCornerQuality), a region is smoothed by
+    /// QuadSmoothing.SmoothRegionInSpace and a node that is added or placed is put onto the surface
+    /// (IQuadSurface.Project). A node without a normal, a pole of the surface, is measured against its own elements.
     /// </summary>
     public class QuadCleanup
     {
@@ -87,6 +92,9 @@ namespace CaeMesh
         private const double MinFixedCorner = 1E-3;
         private const double ShapeFloor = 0.2;
         private double[][] _points;
+        private double[][] _normals;
+        private readonly IQuadSurface _surface;
+        private readonly int _dimension;
         private bool[] _fixed;
         private bool[] _boundary;
         private int[] _idealValence;
@@ -113,6 +121,7 @@ namespace CaeMesh
         private readonly List<int[]> _removedElements;
         private readonly List<int> _movedNodes;
         private readonly List<double[]> _oldPositions;
+        private readonly List<double[]> _oldNormals;
         //
         private int _numOfPairs;
         private int _numOfDoublets;
@@ -123,9 +132,11 @@ namespace CaeMesh
 
 
         // Constructors                                                                                                             
-        private QuadCleanup(double[][] points, int[][] elements, bool[] fixedNodes, bool extendedPairing,
-                            bool lastPasses)
+        private QuadCleanup(double[][] points, double[][] normals, double orientation, IQuadSurface surface,
+                            int[][] elements, bool[] fixedNodes, bool extendedPairing, bool lastPasses)
         {
+            _surface = surface;
+            _dimension = normals == null ? 2 : 3;
             _extendedPairing = extendedPairing;
             _lastPasses = lastPasses;
             // Room for the nodes the splits of hexagons add, one for every two triangles at most
@@ -138,7 +149,15 @@ namespace CaeMesh
             int numOfNodes = points.Length + numOfInputTriangles / 2;
             _points = new double[numOfNodes][];
             for (int n = 0; n < numOfNodes; n++)
-                _points[n] = n < points.Length ? new double[] { points[n][0], points[n][1] } : new double[2];
+            {
+                _points[n] = new double[_dimension];
+                if (n < points.Length) Array.Copy(points[n], _points[n], _dimension);
+            }
+            if (normals != null)
+            {
+                _normals = new double[numOfNodes][];
+                Array.Copy(normals, _normals, normals.Length);
+            }
             _fixed = new bool[numOfNodes];
             Array.Copy(fixedNodes, _fixed, fixedNodes.Length);
             _floor = SubmapFaceDetector.MinScaledJacobian;
@@ -154,16 +173,17 @@ namespace CaeMesh
             _removedElements = new List<int[]>();
             _movedNodes = new List<int>();
             _oldPositions = new List<double[]>();
+            _oldNormals = new List<double[]>();
             double area = 0;
             foreach (var element in elements)
             {
                 if (element.Length != 3 && element.Length != 4)
                     throw new CaeException("The cleanup takes quads and triangles only, not elements of " + element.Length +
                                            " nodes.");
-                area += GetSignedArea(element);
+                if (_normals == null) area += GetSignedArea(element);
                 AddElement((int[])element.Clone());
             }
-            _orientation = area < 0 ? -1 : 1;
+            _orientation = _normals != null ? orientation : area < 0 ? -1 : 1;
             _boundary = new bool[numOfNodes];
             _idealValence = new int[numOfNodes];
             SetBoundary();
@@ -184,15 +204,30 @@ namespace CaeMesh
         /// </summary>
         public static QuadCleanupResult Clean(double[][] points, int[][] elements, bool[] fixedNodes, bool lastPasses)
         {
+            return Clean(points, null, 0, null, elements, fixedNodes, lastPasses);
+        }
+        /// <summary>
+        /// Cleans the mesh of a face on its surface, in space: the nodes are given by their coordinates and the unit
+        /// normals of the surface at them, null at a pole, and the elements turn round the normals times the
+        /// orientation. The points of the result are coordinates on the surface.
+        /// </summary>
+        public static QuadCleanupResult Clean(double[][] points, double[][] normals, double orientation,
+                                              IQuadSurface surface, int[][] elements, bool[] fixedNodes,
+                                              bool lastPasses)
+        {
             if (points == null || elements == null || fixedNodes == null || fixedNodes.Length != points.Length)
                 throw new CaeException("The cleanup needs the positions of the nodes, the elements and which nodes are fixed.");
+            if (normals != null && (normals.Length != points.Length || surface == null))
+                throw new CaeException("The cleanup in space needs the normal at every node and the surface.");
             Stopwatch watch = Stopwatch.StartNew();
-            QuadCleanupResult result = new QuadCleanup(points, elements, fixedNodes, false, false).Run(watch);
+            QuadCleanupResult result = new QuadCleanup(points, normals, orientation, surface, elements, fixedNodes, false,
+                                                       false).Run(watch);
             // Triangles that could not be paired are tried again from the start with the pairs of triangles on the
             // boundary and the other choices of the splits, which are kept only when they leave fewer
             if (result.NumberOfTriangles > 1)
             {
-                QuadCleanupResult extended = new QuadCleanup(points, elements, fixedNodes, true, lastPasses).Run(watch);
+                QuadCleanupResult extended = new QuadCleanup(points, normals, orientation, surface, elements, fixedNodes,
+                                                             true, lastPasses).Run(watch);
                 if (extended.NumberOfTriangles < result.NumberOfTriangles && extended.NumberOfFoldedElements == 0)
                     result = extended;
             }
@@ -201,7 +236,7 @@ namespace CaeMesh
         private QuadCleanupResult Run(Stopwatch watch)
         {
             int numOfTrianglesBefore = CountTriangles();
-            double minScaledJacobianBefore = QuadSmoothing.GetMinScaledJacobian(_points, GetElements(), _orientation);
+            double minScaledJacobianBefore = GetMinScaledJacobian(GetElements());
             int numOfIrregularBefore = CountIrregularNodes();
             //
             if (numOfTrianglesBefore > 1)
@@ -233,9 +268,8 @@ namespace CaeMesh
                 foreach (var node in element) isNodeUsed[node] = true;
             }
             return new QuadCleanupResult(result, resultPoints, isNodeUsed, numOfTrianglesBefore, CountTriangles(),
-                                         QuadSmoothing.CountFoldedElements(_points, result, _orientation),
-                                         minScaledJacobianBefore,
-                                         QuadSmoothing.GetMinScaledJacobian(_points, result, _orientation),
+                                         CountFoldedElements(result), minScaledJacobianBefore,
+                                         GetMinScaledJacobian(result),
                                          numOfIrregularBefore, CountIrregularNodes(), _numOfPairs, _numOfDoublets,
                                          _numOfCollapses, _numOfRotations, _numOfRemeshedRegions, _numOfSplitPaths,
                                          watch.Elapsed.TotalSeconds);
@@ -248,13 +282,14 @@ namespace CaeMesh
         /// Adds a free inner node at the given position, the arrays of the nodes grown when they are full; the node is
         /// removed again when the operation is undone.
         /// </summary>
-        private int AddNode(double x, double y)
+        private int AddNode(double[] position)
         {
             if (_numOfUsedNodes == _points.Length)
             {
                 int capacity = 2 * _points.Length + 8;
                 int numOfNodes = _points.Length;
                 Array.Resize(ref _points, capacity);
+                if (_normals != null) Array.Resize(ref _normals, capacity);
                 Array.Resize(ref _fixed, capacity);
                 Array.Resize(ref _boundary, capacity);
                 Array.Resize(ref _idealValence, capacity);
@@ -262,15 +297,109 @@ namespace CaeMesh
                 Array.Resize(ref _touchedNodes, capacity);
                 for (int n = numOfNodes; n < capacity; n++)
                 {
-                    _points[n] = new double[2];
+                    _points[n] = new double[_dimension];
                     _nodeElements[n] = new List<int>();
                     _idealValence[n] = 4;
                 }
             }
             int node = _numOfUsedNodes++;
-            _points[node][0] = x;
-            _points[node][1] = y;
+            PlaceNode(node, position);
             return node;
+        }
+        /// <summary>
+        /// Puts a node at the position, in space onto the surface next to it, where it takes the normal of the surface.
+        /// </summary>
+        private void PlaceNode(int node, double[] position)
+        {
+            Array.Copy(position, _points[node], _dimension);
+            if (_surface != null) _surface.Project(_points, _normals, new int[] { node }, null);
+        }
+        /// <summary>
+        /// The mean of the positions of the nodes.
+        /// </summary>
+        private double[] GetMean(IList<int> nodes)
+        {
+            double[] mean = new double[_dimension];
+            foreach (var node in nodes)
+            {
+                for (int d = 0; d < _dimension; d++) mean[d] += _points[node][d] / nodes.Count;
+            }
+            return mean;
+        }
+        private double[] GetMiddle(int a, int b)
+        {
+            double[] middle = new double[_dimension];
+            for (int d = 0; d < _dimension; d++) middle[d] = 0.5 * (_points[a][d] + _points[b][d]);
+            return middle;
+        }
+        /// <summary>
+        /// The scaled Jacobian of corner c of an element, in space against the normal of the surface at its node.
+        /// </summary>
+        private double GetCornerQuality(int[] nodes, int c)
+        {
+            if (_normals == null) return QuadSmoothing.GetElementScaledJacobian(_points, nodes, c, _orientation);
+            double energy;
+            return QuadSmoothing.GetSpaceCornerQuality(_points, _normals, nodes, c, _orientation, out energy);
+        }
+        private double GetMinScaledJacobian(int[][] elements)
+        {
+            if (_normals == null) return QuadSmoothing.GetMinScaledJacobian(_points, elements, _orientation);
+            return QuadSmoothing.GetSpaceMinScaledJacobian(_points, _normals, elements, _orientation);
+        }
+        private int CountFoldedElements(int[][] elements)
+        {
+            if (_normals == null) return QuadSmoothing.CountFoldedElements(_points, elements, _orientation);
+            int numOfFolded = 0;
+            foreach (var element in elements)
+            {
+                for (int c = 0; c < element.Length; c++)
+                {
+                    if (GetCornerQuality(element, c) <= 0)
+                    {
+                        numOfFolded++;
+                        break;
+                    }
+                }
+            }
+            return numOfFolded;
+        }
+        private void SmoothRegion(int[][] elements, int[] freeNodes, int numOfSweeps)
+        {
+            if (_normals == null)
+                QuadSmoothing.SmoothRegion(_points, elements, freeNodes, _orientation, numOfSweeps, _floor);
+            else
+                QuadSmoothing.SmoothRegionInSpace(_points, _normals, elements, freeNodes, _orientation, numOfSweeps,
+                                                  _floor, _surface);
+        }
+        /// <summary>
+        /// The unit normal the elements of a node turn round: in space the normal of the surface at the node times the
+        /// orientation, and at a node without one the mean of the normals of the corners its elements have there.
+        /// </summary>
+        private double[] GetTurnNormal(int node)
+        {
+            double[] normal = new double[3];
+            if (_normals[node] != null)
+            {
+                for (int d = 0; d < 3; d++) normal[d] = _orientation * _normals[node][d];
+                return normal;
+            }
+            double[] p = _points[node];
+            foreach (var id in _nodeElements[node])
+            {
+                int[] nodes = _elements[id];
+                int c = IndexOf(nodes, node);
+                double[] a = _points[nodes[(c + 1) % nodes.Length]];
+                double[] b = _points[nodes[(c + nodes.Length - 1) % nodes.Length]];
+                normal[0] += (a[1] - p[1]) * (b[2] - p[2]) - (a[2] - p[2]) * (b[1] - p[1]);
+                normal[1] += (a[2] - p[2]) * (b[0] - p[0]) - (a[0] - p[0]) * (b[2] - p[2]);
+                normal[2] += (a[0] - p[0]) * (b[1] - p[1]) - (a[1] - p[1]) * (b[0] - p[0]);
+            }
+            double length = Math.Sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+            if (length > 0)
+            {
+                for (int d = 0; d < 3; d++) normal[d] /= length;
+            }
+            return normal;
         }
         private int AddElement(int[] nodes)
         {
@@ -380,7 +509,16 @@ namespace CaeMesh
                 double ay = next[1] - p[1];
                 double bx = previous[0] - p[0];
                 double by = previous[1] - p[1];
-                double angle = Math.Atan2(_orientation * (ax * by - ay * bx), ax * bx + ay * by);
+                double angle;
+                if (_normals == null) angle = Math.Atan2(_orientation * (ax * by - ay * bx), ax * bx + ay * by);
+                else
+                {
+                    double az = next[2] - p[2];
+                    double bz = previous[2] - p[2];
+                    double[] normal = GetTurnNormal(v);
+                    angle = Math.Atan2((ay * bz - az * by) * normal[0] + (az * bx - ax * bz) * normal[1] +
+                                       (ax * by - ay * bx) * normal[2], ax * bx + ay * by + az * bz);
+                }
                 if (angle <= 0) angle += 2 * Math.PI;
                 if (angle < 0.5 * Math.PI) _cornerFloor = Math.Min(_cornerFloor, SharpCornerShare * Math.Sin(angle));
                 int numOfQuads = Math.Max(1, (int)Math.Round(angle / (0.5 * Math.PI)));
@@ -437,8 +575,7 @@ namespace CaeMesh
         private double GetMinCorner(int[] nodes)
         {
             double min = double.MaxValue;
-            for (int c = 0; c < nodes.Length; c++)
-                min = Math.Min(min, QuadSmoothing.GetElementScaledJacobian(_points, nodes, c, _orientation));
+            for (int c = 0; c < nodes.Length; c++) min = Math.Min(min, GetCornerQuality(nodes, c));
             return min;
         }
         private void Begin()
@@ -449,6 +586,7 @@ namespace CaeMesh
             _removedElements.Clear();
             _movedNodes.Clear();
             _oldPositions.Clear();
+            _oldNormals.Clear();
         }
         private void Commit(List<int> seedNodes)
         {
@@ -470,24 +608,26 @@ namespace CaeMesh
             }
             for (int i = _movedNodes.Count - 1; i >= 0; i--)
             {
-                _points[_movedNodes[i]][0] = _oldPositions[i][0];
-                _points[_movedNodes[i]][1] = _oldPositions[i][1];
+                Array.Copy(_oldPositions[i], _points[_movedNodes[i]], _dimension);
+                if (_normals != null) _normals[_movedNodes[i]] = _oldNormals[i];
             }
             for (int node = _numOfUsedNodesAtStart; node < _numOfUsedNodes; node++)
             {
-                _points[node][0] = 0;
-                _points[node][1] = 0;
+                Array.Clear(_points[node], 0, _dimension);
+                if (_normals != null) _normals[node] = null;
             }
             _numOfUsedNodes = _numOfUsedNodesAtStart;
             _removedIds.Clear();
             _removedElements.Clear();
             _movedNodes.Clear();
             _oldPositions.Clear();
+            _oldNormals.Clear();
         }
         private void SaveNode(int node)
         {
             _movedNodes.Add(node);
-            _oldPositions.Add(new double[] { _points[node][0], _points[node][1] });
+            _oldPositions.Add((double[])_points[node].Clone());
+            _oldNormals.Add(_normals == null ? null : _normals[node]);
         }
         /// <summary>
         /// The seed nodes and every node within the given number of rings of elements around them, in ascending order.
@@ -593,7 +733,7 @@ namespace CaeMesh
                 {
                     if (freeNodes.Contains(nodes[c]) || freeNodes.Contains(nodes[(c + 1) % n]) ||
                         freeNodes.Contains(nodes[(c + n - 1) % n])) continue;
-                    double quality = QuadSmoothing.GetElementScaledJacobian(_points, nodes, c, _orientation);
+                    double quality = GetCornerQuality(nodes, c);
                     if (!(quality > 0 && quality >= threshold)) return true;
                 }
             }
@@ -615,7 +755,7 @@ namespace CaeMesh
             int[][] elements = new int[elementIds.Count][];
             for (int i = 0; i < elements.Length; i++) elements[i] = _elements[elementIds[i]];
             foreach (var node in freeNodes) SaveNode(node);
-            QuadSmoothing.SmoothRegion(_points, elements, freeNodes.ToArray(), _orientation, numOfSweeps, _floor);
+            SmoothRegion(elements, freeNodes.ToArray(), numOfSweeps);
             return true;
         }
         /// <summary>
@@ -649,26 +789,27 @@ namespace CaeMesh
         /// the edges at the corner, which is 2 |a x b| / (|a|^2 + |b|^2) - 1 at a square corner, 0.38 at a corner of a
         /// 5:1 rectangle, 0.2 at one of 10:1 - and a triangle measured against the equilateral one, which counts 1.
         /// </summary>
-        internal static double GetMinShape(double[][] points, int[] nodes, double orientation)
+        private double GetMinShape(int[] nodes)
         {
             double min = double.MaxValue;
             int n = nodes.Length;
             for (int c = 0; c < n; c++)
             {
-                double[] p = points[nodes[c]];
-                double[] a = points[nodes[(c + 1) % n]];
-                double[] b = points[nodes[(c + n - 1) % n]];
-                double aLength2 = (a[0] - p[0]) * (a[0] - p[0]) + (a[1] - p[1]) * (a[1] - p[1]);
-                double bLength2 = (b[0] - p[0]) * (b[0] - p[0]) + (b[1] - p[1]) * (b[1] - p[1]);
+                double[] p = _points[nodes[c]];
+                double[] a = _points[nodes[(c + 1) % n]];
+                double[] b = _points[nodes[(c + n - 1) % n]];
+                double aLength2 = 0;
+                double bLength2 = 0;
+                for (int d = 0; d < _dimension; d++)
+                {
+                    aLength2 += (a[d] - p[d]) * (a[d] - p[d]);
+                    bLength2 += (b[d] - p[d]) * (b[d] - p[d]);
+                }
                 double factor = aLength2 + bLength2 > 0 ?
                                 2 * Math.Sqrt(aLength2 * bLength2) / (aLength2 + bLength2) : 0;
-                min = Math.Min(min, QuadSmoothing.GetElementScaledJacobian(points, nodes, c, orientation) * factor);
+                min = Math.Min(min, GetCornerQuality(nodes, c) * factor);
             }
             return min;
-        }
-        private double GetMinShape(int[] nodes)
-        {
-            return GetMinShape(_points, nodes, _orientation);
         }
         private bool Finish(List<int> seedNodes, double before, int numOfRings)
         {
@@ -902,12 +1043,7 @@ namespace CaeMesh
                 }
                 if (polygon.Count < 6) continue;
                 // The quads around a new node in the middle
-                double[] centre = new double[2];
-                foreach (var node in polygon)
-                {
-                    centre[0] += _points[node][0] / polygon.Count;
-                    centre[1] += _points[node][1] / polygon.Count;
-                }
+                double[] centre = GetMean(polygon);
                 for (int offset = 0; offset < 2; offset++)
                 {
                     List<int[]> quads = new List<int[]>();
@@ -942,7 +1078,7 @@ namespace CaeMesh
                 int centre = -1;
                 if (candidateCentres[candidate] != null)
                 {
-                    centre = AddNode(candidateCentres[candidate][0], candidateCentres[candidate][1]);
+                    centre = AddNode(candidateCentres[candidate]);
                     seedNodes.Add(centre);
                 }
                 foreach (var quad in candidateQuads[candidate])
@@ -1115,29 +1251,58 @@ namespace CaeMesh
             int q = polygon[j];
             if (EdgeExists(p, q) && !innerEdges.Contains(GetEdgeKey(p, q))) return false;
             int n = polygon.Count;
+            double[] normal = _normals == null ? null : GetPolygonNormal(polygon);
             for (int k = 0; k < n; k++)
             {
                 int a = polygon[k];
                 int b = polygon[(k + 1) % n];
                 if (a == p || a == q || b == p || b == q) continue;
-                if (SegmentsCross(_points[p], _points[q], _points[a], _points[b])) return false;
+                if (SegmentsCross(_points[p], _points[q], _points[a], _points[b], normal)) return false;
             }
             return true;
         }
-        private static bool SegmentsCross(double[] p, double[] q, double[] a, double[] b)
+        /// <summary>
+        /// The direction a polygon is looked at along in space to tell which of its segments cross: the sum of the
+        /// normals of the surface at its nodes, or without any the normal of the polygon itself.
+        /// </summary>
+        private double[] GetPolygonNormal(List<int> polygon)
         {
-            double d1 = Cross(p, q, a);
-            double d2 = Cross(p, q, b);
-            double d3 = Cross(a, b, p);
-            double d4 = Cross(a, b, q);
+            double[] normal = new double[3];
+            foreach (var node in polygon)
+            {
+                if (_normals[node] == null) continue;
+                for (int d = 0; d < 3; d++) normal[d] += _normals[node][d];
+            }
+            if (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] > 0) return normal;
+            int n = polygon.Count;
+            for (int k = 0; k < n; k++)
+            {
+                double[] a = _points[polygon[k]];
+                double[] b = _points[polygon[(k + 1) % n]];
+                normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+                normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+                normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+            }
+            return normal;
+        }
+        private static bool SegmentsCross(double[] p, double[] q, double[] a, double[] b, double[] normal)
+        {
+            double d1 = Cross(p, q, a, normal);
+            double d2 = Cross(p, q, b, normal);
+            double d3 = Cross(a, b, p, normal);
+            double d4 = Cross(a, b, q, normal);
             return d1 * d2 <= 0 && d3 * d4 <= 0;
         }
-        private static double Cross(double[] o, double[] a, double[] b)
+        private static double Cross(double[] o, double[] a, double[] b, double[] normal)
         {
-            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+            if (normal == null) return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+            return ((a[1] - o[1]) * (b[2] - o[2]) - (a[2] - o[2]) * (b[1] - o[1])) * normal[0] +
+                   ((a[2] - o[2]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[2] - o[2])) * normal[1] +
+                   ((a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])) * normal[2];
         }
         /// <summary>
-        /// The worst corner of an element whose node -1 lies at the given position.
+        /// The worst corner of an element whose node -1 lies at the given position; in space its corner there is
+        /// measured against the mean of the normals at the other nodes of the element.
         /// </summary>
         private double GetMinCorner(int[] nodes, double[] position)
         {
@@ -1147,7 +1312,7 @@ namespace CaeMesh
         }
         private double GetCorner(int[] nodes, int c, double[] position)
         {
-            if (position == null) return QuadSmoothing.GetElementScaledJacobian(_points, nodes, c, _orientation);
+            if (position == null) return GetCornerQuality(nodes, c);
             double[][] points = new double[nodes.Length][];
             int[] local = new int[nodes.Length];
             for (int k = 0; k < nodes.Length; k++)
@@ -1155,7 +1320,26 @@ namespace CaeMesh
                 points[k] = nodes[k] < 0 ? position : _points[nodes[k]];
                 local[k] = k;
             }
-            return QuadSmoothing.GetElementScaledJacobian(points, local, c, _orientation);
+            if (_normals == null) return QuadSmoothing.GetElementScaledJacobian(points, local, c, _orientation);
+            double[][] normals = new double[nodes.Length][];
+            double[] mean = new double[3];
+            for (int k = 0; k < nodes.Length; k++)
+            {
+                if (nodes[k] < 0 || _normals[nodes[k]] == null) continue;
+                normals[k] = _normals[nodes[k]];
+                for (int d = 0; d < 3; d++) mean[d] += normals[k][d];
+            }
+            double length = Math.Sqrt(mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]);
+            if (length > 0)
+            {
+                for (int d = 0; d < 3; d++) mean[d] /= length;
+                for (int k = 0; k < nodes.Length; k++)
+                {
+                    if (nodes[k] < 0) normals[k] = mean;
+                }
+            }
+            double energy;
+            return QuadSmoothing.GetSpaceCornerQuality(points, normals, local, c, _orientation, out energy);
         }
         /// <summary>
         /// Turns two triangles and the path of quads between them into quads only by splitting the path along its
@@ -1246,7 +1430,7 @@ namespace CaeMesh
                     int a = nodes[c];
                     int b = nodes[(c + 1) % nodes.Length];
                     if (GetNeighbour(path[i], a, b) != path[i + 1]) continue;
-                    int middle = AddNode(0.5 * (_points[a][0] + _points[b][0]), 0.5 * (_points[a][1] + _points[b][1]));
+                    int middle = AddNode(GetMiddle(a, b));
                     middles.Add(GetEdgeKey(a, b), middle);
                     seedNodes.Add(middle);
                 }
@@ -1283,14 +1467,7 @@ namespace CaeMesh
                         // corner across from the one the path turns round
                         hexagon = Rotate(hexagon, middlePositions[1] - middlePositions[0] == 2 ? middlePositions[0] :
                                                                                                  middlePositions[1]);
-                        double x = 0;
-                        double y = 0;
-                        foreach (var node in hexagon)
-                        {
-                            x += _points[node][0] / 6;
-                            y += _points[node][1] / 6;
-                        }
-                        int centre = AddNode(x, y);
+                        int centre = AddNode(GetMean(hexagon));
                         seedNodes.Add(centre);
                         for (int k = 0; k < 6; k += 2)
                             created.Add(new int[] { centre, hexagon[k], hexagon[k + 1], hexagon[(k + 2) % 6] });
@@ -1380,20 +1557,14 @@ namespace CaeMesh
                 if (!next.TryGetValue(hexagon[i - 1], out hexagon[i])) return false;
             }
             if (next[hexagon[5]] != hexagon[0]) return false;
-            double x = 0;
-            double y = 0;
-            foreach (var node in hexagon)
-            {
-                x += _points[node][0] / 6;
-                y += _points[node][1] / 6;
-            }
+            double[] middle = GetMean(hexagon);
             List<int> seedNodes = new List<int>(hexagon);
             double before = GetRegionQuality(seedNodes, 1);
             double beforeShape = GetRegionShape(seedNodes, 1);
             for (int offset = 0; offset < 2; offset++)
             {
                 Begin();
-                int center = AddNode(x, y);
+                int center = AddNode(middle);
                 foreach (var id in ids) RemoveElement(id);
                 for (int k = offset; k < 6; k += 2)
                     AddElement(new int[] { center, hexagon[k], hexagon[(k + 1) % 6], hexagon[(k + 2) % 6] });
@@ -1809,8 +1980,7 @@ namespace CaeMesh
                     RemoveElement(other);
                     AddElement(nodes);
                 }
-                _points[a][0] = 0.5 * (_points[a][0] + _points[c][0]);
-                _points[a][1] = 0.5 * (_points[a][1] + _points[c][1]);
+                PlaceNode(a, GetMiddle(a, c));
                 if (Finish(seedNodes, quality, 1))
                 {
                     _numOfCollapses++;
@@ -1925,7 +2095,7 @@ namespace CaeMesh
             List<int> elementIds = GetNodesElements(freeNodes);
             int[][] elements = new int[elementIds.Count][];
             for (int i = 0; i < elements.Length; i++) elements[i] = _elements[elementIds[i]];
-            QuadSmoothing.SmoothRegion(_points, elements, freeNodes.ToArray(), _orientation, NumOfFinalSweeps, _floor);
+            SmoothRegion(elements, freeNodes.ToArray(), NumOfFinalSweeps);
         }
     }
 }
