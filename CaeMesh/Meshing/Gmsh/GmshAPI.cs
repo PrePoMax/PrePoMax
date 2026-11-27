@@ -5212,8 +5212,9 @@ namespace CaeMesh
                 for (int l = 0; l < loops.Length; l++)
                 {
                     // Every hole closes on its own, as the outer loop does; a round hole has its edges equal unless they
-                    // are of unequal length and a multiple of four around it, and when it is raised no fewer than its
-                    // least number
+                    // are of unequal length and a multiple of four around it, a multiple of eight where nothing else
+                    // asks otherwise, so that a node lies at the corner of its square, and when it is raised no fewer
+                    // than its least number
                     string loopName = _submapRowPrefix + face.FaceId + (l == 0 ? "" : " hole of Edge " + loops[l].EdgeIds[0]);
                     TransfiniteSidePair[] pairs = loops[l].GetSidePairs();
                     if (loops[l].IsRound)
@@ -5222,6 +5223,8 @@ namespace CaeMesh
                             problem.AddEqualSums(loopName + " Edge " + pair.SideA[0] + " as Edge " + pair.SideB[0],
                                                  IntervalRowTierEnum.Structured, pair.SideA, pair.SideB, face.FaceId);
                         problem.AddEvenSum(loopName + " around", IntervalRowTierEnum.Structured, loops[l].EdgeIds, 4);
+                        problem.AddEvenSum(loopName + " even on a side", IntervalRowTierEnum.Preferred,
+                                           loops[l].EdgeIds, 8);
                         if (_raisedRoundHoleSourceIds.Contains(face.FaceId))
                             problem.AddAtLeastSum(loopName + " least around", IntervalRowTierEnum.Structured,
                                                   loops[l].EdgeIds, SubmapFace.MinNumberOfElementsRound, face.FaceId);

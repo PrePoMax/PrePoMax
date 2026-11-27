@@ -39,6 +39,8 @@
 #    message.
 #  - The round hole that leaves walls of 7 mm at the element size 10 keeps a cell between it and the border.
 #    The centred round-hole plate keeps its baseline nodes and elements.
+#  - A round hole takes a multiple of eight elements where nothing else asks otherwise, so that a node lies at every
+#    corner of its square: the off-centre hole carries 16, not 12, and each bolt hole 8.
 #  - Pinned counts: 10 elements on the closed edge of the round hole and on a half circle of the slot are not a
 #    multiple of four and leave the face free with a message naming the edge; 6 elements on one half circle of the
 #    round hole are carried to the other, 3 on a quarter to the other three.
@@ -95,10 +97,10 @@ ROUND_HOLES = {"round hole": [(30, 20, 10)], "two halves": [(30, 20, 10)], "turn
 # By shape: the number of holes, the number of round ones, the turns of the edges that turn twice, and the quads at the
 # element size 5 (10 for the coarse border)
 EXPECTED = {"round hole": (1, 1, [], 96), "two halves": (1, 1, [], 96), "turned halves": (1, 1, [], 96),
-            "four quarters": (1, 1, [], 96), "off-centre round": (1, 1, [], 99), "four bolt holes": (4, 4, [], 204),
+            "four quarters": (1, 1, [], 96), "off-centre round": (1, 1, [], 96), "four bolt holes": (4, 4, [], 208),
             "L with round hole": (1, 1, [], 72), "slot along": (1, 0, [-2, -2], 118),
             "slot across": (1, 0, [-2, -2], 148),
-            "round and rectangle": (2, 1, [], 164), "sheared round": (1, 1, [], 111), "coarse border": (1, 1, [], 32)}
+            "round and rectangle": (2, 1, [], 164), "sheared round": (1, 1, [], 108), "coarse border": (1, 1, [], 32)}
 # The hexahedra of the swept solids at the element size 5; the plate with the slot on the counts of a sweep mirrored
 # across its three planes (588 before)
 # The round holes with a ring of quads around them, by shape and by swept solid: every one but the hole of the L,
@@ -106,7 +108,7 @@ EXPECTED = {"round hole": (1, 1, [], 96), "two halves": (1, 1, [], 96), "turned 
 RINGED = {"round hole": 1, "two halves": 1, "turned halves": 1, "four quarters": 1, "off-centre round": 1,
           "four bolt holes": 4, "round and rectangle": 1, "sheared round": 1}
 SOURCE_RINGS = {"plate round": 1, "L bracket": 1, "plate four holes": 4, "round and square": 1}
-EXPECTED_HEXAHEDRA = {"plate round": 576, "L bracket": 552, "plate slot": 644, "plate four holes": 1224,
+EXPECTED_HEXAHEDRA = {"plate round": 576, "L bracket": 612, "plate slot": 644, "plate four holes": 1152,
                       "round and square": 984}
 
 

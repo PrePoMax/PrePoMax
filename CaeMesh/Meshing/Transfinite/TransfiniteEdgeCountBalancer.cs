@@ -79,7 +79,9 @@ namespace CaeMesh
         /// a mirrored mesh never costs a structured face or a number the user set; the pieces of the edges that are
         /// split for the planes are counted like edges, each with the number it aims at, and get their numbers back.
         /// Every one of roundHoles, the edges of a round hole of a submapped face, is asked for a multiple of four, and
-        /// every one of raisedRoundHoles, a round hole whose face makes a poor grid on fewer, for
+        /// at the preferred tier for a multiple of eight, an even number on each side of its square, which puts a node
+        /// of a hole that starts on a lattice direction on the diagonal, where the corner of its square is; every one
+        /// of raisedRoundHoles, a round hole whose face makes a poor grid on fewer, for
         /// SubmapFace.MinNumberOfElementsRound elements at least, both with the tier of the pairs.
         /// </summary>
         public static List<TransfiniteSidePair> Balance(Dictionary<int, int> edgeIdCount,
@@ -238,7 +240,11 @@ namespace CaeMesh
             if (roundHoles != null)
             {
                 for (int i = 0; i < roundHoles.Count; i++)
+                {
                     problem.AddEvenSum("Round hole " + i, IntervalRowTierEnum.Hard, roundHoles[i], 4);
+                    problem.AddEvenSum("Round hole even on a side " + i, IntervalRowTierEnum.Preferred,
+                                       roundHoles[i], 8);
+                }
             }
             if (raisedRoundHoles != null)
             {

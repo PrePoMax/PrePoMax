@@ -79,7 +79,7 @@ EXPECTED = {"annulus": (True, False, "ring", 3, 78),
             "plate large bore": (False, True, "ring", 2, 96),
             "plate small bore": (None, True, "ringed lattice", 1, 144),
             "elliptic ring": (True, False, "ring", 1, 32),
-            "L with small hole": (None, True, "ringed lattice", 1, 90),
+            "L with small hole": (None, True, "ringed lattice", 1, 91),
             "two holes": (None, True, "ringed lattice", 2, 128),
             "small diamond": (None, False, "free", 0, 0)}
 EXPECTED_HEXAHEDRA = {"pipe": 312, "thin pipe": 156, "tube with radii": 468, "flange": 576}

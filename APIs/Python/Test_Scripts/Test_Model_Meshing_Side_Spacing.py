@@ -608,7 +608,7 @@ def check_round_strip(pin, total, plate_count, expected_quality):
     away = [grid.uv[n] for element in plate for n in element if abs(grid.uv[n][1] - 70) > 25]
     check(len(away) > 0 and all(min(abs(x - u) for u in top) < EPS for x, y in away),
           "the lines of the round-hole plate are not straight away from the hole")
-    check_round_rim(grid, 50, 70, 12, 20, "c0d46daa27495158665e9741d355bdbc43152e4c72bb55c29b0d6015b4186857")
+    check_round_rim(grid, 50, 70, 12, 16, "519f76c546585d3b0b94ed61768b53269edd9ff341c5b2887ed4d45f29c1a610")
     print("round strip pin %d lean %.6f, worst %.6f; round plate lean %.6f, worst %.6f" %
           (pin, strip_lean, grid.worst_corner(strip), plate_lean, quality))
 
@@ -643,8 +643,8 @@ def check_mixed_holes():
     print("mixed holes: 264 quads, worst %.6f" % quality)
 
 
-check_round_strip(12, 26, 307, 0.794379)
-check_round_strip(7, 21, 247, 0.772219)
+check_round_strip(12, 26, 312, 0.857690)
+check_round_strip(7, 21, 252, 0.857690)
 check_mixed_holes()
 
 print("TEST PASSED")

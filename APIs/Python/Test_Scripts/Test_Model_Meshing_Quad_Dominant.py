@@ -65,7 +65,7 @@ SOLIDS = SHELLS[:8]
 # quads on 24 before), and the cylinder patch is submapped since its grid is smoothed and judged on the cylinder itself
 # and not in the plane of its parameters, which refused it (153 quads and 56 triangles of a free mesh before)
 EXPECTED_SIMPLE = {"disc": (76, 0), "half disc": (38, 0), "triangle": (56, 23), "house": (61, 10),
-                   "eccentric annulus": (58, 14), "plate with diamond": (165, 54), "three holes": (157, 0),
+                   "eccentric annulus": (58, 14), "plate with diamond": (165, 54), "three holes": (168, 0),
                    "heptagon": (97, 31), "thin L": (17, 0), "cylinder patch": (140, 0)}
 CYLINDER_RADIUS = 40.0
 

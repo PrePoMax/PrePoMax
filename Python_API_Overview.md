@@ -1101,6 +1101,9 @@ L-shaped or filleted cut-outs, a slot - each classified by the same rules, its c
 in the grid where it lies; its outer loop then needs no corner. A round hole - one closed edge, two half circles or four
 quarters of equal length - is a square in the grid with its corners at 45 degrees, so it carries a multiple of four
 elements, as many on each of its edges, and bolt holes, a plate with a round hole or an L bracket with one are taken.
+Where no number set on an edge and no other face asks otherwise it carries a multiple of eight, an even number on
+each side of the square: a hole that starts on a direction of the grid then has a node at every corner of the
+square, and its elements are not skewed around it.
 A round hole with room beside it - at least one and a half lengths of its elements to the nearest other loop of the
 face - is meshed with a ring of elements around it, as thick as its elements are long and no thicker than half of that
 room: every node of the hole is then shared by two elements, and the four nodes where five elements meet, which a
