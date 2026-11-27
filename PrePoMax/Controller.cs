@@ -30211,6 +30211,7 @@ namespace PrePoMax
                                 data.CanHaveElementEdges = true;
                                 data.BackfaceCulling = backfaceCulling;
                                 data.DrawOnGeometry = true;
+                                data.SelectionTint = true;
                                 data.UseSecondaryHighlightColor = useSecondaryHighlightColor;
                                 //
                                 ApplyLighting(data);
@@ -30262,6 +30263,7 @@ namespace PrePoMax
                 data.CanHaveElementEdges = true;
                 data.BackfaceCulling = backfaceCulling;
                 data.DrawOnGeometry = true;
+                data.SelectionTint = true;
                 data.UseSecondaryHighlightColor = useSecondaryHighlightColor;
                 data.Geometry.Cells.CellNodeIds = cells;
                 // The element of each face lets the element-wise section view keep the faces of the remaining elements
@@ -31234,6 +31236,7 @@ namespace PrePoMax
             data.CanHaveElementEdges = true;
             data.BackfaceCulling = true;
             data.DrawOnGeometry = true;
+            data.SelectionTint = true;
             data.UseSecondaryHighlightColor = useSecondaryHighlightColor;
             data.Geometry.Cells.CellNodeIds = cells;
             mesh.GetSurfaceGeometry(cells, out data.Geometry.Nodes.Ids, out data.Geometry.Nodes.Coor, out data.Geometry.Cells.Types);

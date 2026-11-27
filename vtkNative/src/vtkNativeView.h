@@ -324,6 +324,8 @@ namespace vtkn
         void ApplyEdgesVisibility(PartActor& actor, vtkn_layer layer, bool partsDrawElementEdges);
         bool PartsDrawElementEdges();
         vtkSmartPointer<vtkRenderer> SelectionRenderer;
+        // The halo of the mouse highlight, drawn under the selection layer so that the highlight covers it
+        vtkSmartPointer<vtkRenderer> HaloRenderer;
         // The base layer actors that are not parts (symbols, constraint faces, nodes): Parts holds only what
         // picking and the parts of the checks consider
         std::map<std::string, std::unique_ptr<PartActor>> BaseActors;
@@ -384,6 +386,20 @@ namespace vtkn
         };
         vtkRenderer* GetHighlightRenderer();
         void AddHighlightActor(vtkActor* actor, const vtkn_highlight_style& style);
+        void AddHighlightHalo(vtkDataSet* data, vtkPolyData* lineJoints, const vtkn_highlight_style& style);
+        // The halos and round joints of the selected lines, by the geometry of the selected actor they belong to
+        struct SelectionHaloEntry
+        {
+            vtkSmartPointer<vtkActor> Actor;
+            vtkRenderer* Renderer;
+            vtkSmartPointer<vtkActor> Source;
+        };
+        void AddSelectionHalo(PartActor& actor);
+        void AddSelectionHaloActor(vtkActor* halo, vtkRenderer* renderer, vtkActor* source);
+        void ClearSelectionHalos();
+        static void OnHaloRendererStart(vtkObject* caller, unsigned long eventId, void* clientData, void* callData);
+        std::vector<SelectionHaloEntry> SelectionHalos;
+        vtkSmartPointer<vtkCallbackCommand> HaloRendererCommand;
         std::map<std::string, vtkSmartPointer<vtkUnstructuredGrid>> VolumeGrids;
         std::vector<HighlightEntry> Highlights;
         bool SectionViewPartSelection = true;

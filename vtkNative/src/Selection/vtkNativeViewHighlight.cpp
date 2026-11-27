@@ -12,11 +12,15 @@
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
 #include <vtkExtractEdges.h>
+#include <vtkIdList.h>
 #include <vtkNew.h>
+#include <vtkPlaneCollection.h>
+#include <vtkPointSet.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataSilhouette.h>
 #include <vtkProperty.h>
+#include <vtkTrivialProducer.h>
 #include <vtkUnstructuredGridGeometryFilter.h>
 
 #include <algorithm>
@@ -58,6 +62,124 @@ namespace vtkn
             }
             return true;
         }
+
+        // A vertex on every point a line of the data passes through
+        vtkSmartPointer<vtkPolyData> GetLineJoints(vtkDataSet* data)
+        {
+            vtkSmartPointer<vtkPolyData> joints = vtkSmartPointer<vtkPolyData>::New();
+            vtkPointSet* pointSet = vtkPointSet::SafeDownCast(data);
+            if (pointSet == nullptr || pointSet->GetPoints() == nullptr) return joints;
+            std::vector<bool> onLine(static_cast<size_t>(data->GetNumberOfPoints()), false);
+            vtkNew<vtkIdList> pointIds;
+            for (vtkIdType i = 0; i < data->GetNumberOfCells(); i++)
+            {
+                int cellType = data->GetCellType(i);
+                if (cellType != VTK_LINE && cellType != VTK_POLY_LINE && cellType != VTK_QUADRATIC_EDGE) continue;
+                data->GetCellPoints(i, pointIds);
+                for (vtkIdType j = 0; j < pointIds->GetNumberOfIds(); j++) onLine[pointIds->GetId(j)] = true;
+            }
+            vtkNew<vtkCellArray> vertices;
+            for (vtkIdType i = 0; i < static_cast<vtkIdType>(onLine.size()); i++)
+                if (onLine[i]) vertices->InsertNextCell(1, &i);
+            joints->SetPoints(pointSet->GetPoints());
+            joints->SetVerts(vertices);
+            return joints;
+        }
+
+        // Lines and round points in a flat color
+        vtkSmartPointer<vtkActor> CreateUnlitActor(vtkDataSet* data, const double* color, double pointSize,
+                                                   double lineWidth)
+        {
+            vtkSmartPointer<vtkActor> actor = CreateActor(data);
+            vtkProperty* property = actor->GetProperty();
+            property->SetColor(color[0], color[1], color[2]);
+            property->SetLighting(false);
+            property->SetAmbient(1);
+            property->SetDiffuse(0);
+            property->SetSpecular(0);
+            property->SetPointSize(static_cast<float>(pointSize));
+            property->SetLineWidth(static_cast<float>(lineWidth));
+            property->BackfaceCullingOff();
+            property->RenderPointsAsSpheresOn();
+            DrawPointsAsFlatRoundDots(actor);
+            return actor;
+        }
+
+        // How much wider than the lines and points the halo is, and how close to white its shade of their color
+        const double HaloWidth = 2;
+        const double HaloWhiteness = 0.65;
+
+        void GetHaloColor(const double* color, double* haloColor)
+        {
+            for (int i = 0; i < 3; i++) haloColor[i] = color[i] + (1 - color[i]) * HaloWhiteness;
+        }
+    }
+
+    // The selected lines drawn as the lines of the mouse highlight: with round joints and ends, and with the halo
+    // under them. The added actors are cut by the clipping planes of the lines and follow their visibility. A symbol
+    // is left as it is: its pipeline builds its lines again as the view zooms, and joints taken from the lines it had
+    // would stay behind where they were
+    void View::AddSelectionHalo(PartActor& actor)
+    {
+        const vtkn_part_style& style = actor.GetStyle();
+        if (style.draw_on_geometry || style.keep_own_color) return;
+        if (vtkTrivialProducer::SafeDownCast(actor.GetGeometry()->GetMapper()->GetInputAlgorithm()) == nullptr) return;
+        vtkPolyData* polyData = actor.GetPolyData();
+        if (polyData == nullptr || polyData->GetNumberOfLines() == 0 || polyData->GetNumberOfPolys() > 0 ||
+            polyData->GetNumberOfStrips() > 0 || polyData->GetNumberOfVerts() > 0) return;
+        vtkActor* geometry = actor.GetGeometry();
+        vtkMapper* mapper = geometry->GetMapper();
+        if (mapper->GetClippingPlanes() == nullptr)
+        {
+            vtkNew<vtkPlaneCollection> planes;
+            mapper->SetClippingPlanes(planes);
+        }
+        double color[3];
+        geometry->GetProperty()->GetColor(color);
+        double lineWidth = geometry->GetProperty()->GetLineWidth();
+        double haloColor[3];
+        GetHaloColor(color, haloColor);
+        double haloLineWidth = lineWidth + HaloWidth;
+        vtkSmartPointer<vtkPolyData> lineJoints = GetLineJoints(polyData);
+        AddSelectionHaloActor(CreateUnlitActor(polyData, haloColor, haloLineWidth, haloLineWidth), HaloRenderer,
+                              geometry);
+        if (lineJoints->GetNumberOfVerts() == 0) return;
+        AddSelectionHaloActor(CreateUnlitActor(lineJoints, haloColor, haloLineWidth, haloLineWidth), HaloRenderer,
+                              geometry);
+        AddSelectionHaloActor(CreateUnlitActor(lineJoints, color, lineWidth, lineWidth), GetLayerRenderer(actor),
+                              geometry);
+    }
+
+    void View::AddSelectionHaloActor(vtkActor* halo, vtkRenderer* renderer, vtkActor* source)
+    {
+        halo->PickableOff();
+        halo->GetMapper()->SetClippingPlanes(source->GetMapper()->GetClippingPlanes());
+        halo->SetPosition(source->GetPosition());
+        halo->SetOrientation(source->GetOrientation());
+        halo->SetScale(source->GetScale());
+        halo->SetUserTransform(source->GetUserTransform());
+        halo->SetVisibility(source->GetVisibility());
+        renderer->AddActor(halo);
+        SelectionHalos.push_back({ halo, renderer, source });
+    }
+
+    void View::ClearSelectionHalos()
+    {
+        for (const SelectionHaloEntry& entry : SelectionHalos) entry.Renderer->RemoveActor(entry.Actor);
+        SelectionHalos.clear();
+    }
+
+    // Before the halo layer is drawn, the halos of the selected lines take the visibility and the position of their
+    // lines
+    void View::OnHaloRendererStart(vtkObject*, unsigned long, void* clientData, void*)
+    {
+        View* view = static_cast<View*>(clientData);
+        for (const SelectionHaloEntry& entry : view->SelectionHalos)
+        {
+            if (entry.Actor->GetVisibility() != entry.Source->GetVisibility())
+                entry.Actor->SetVisibility(entry.Source->GetVisibility());
+            entry.Actor->SetPosition(entry.Source->GetPosition());
+        }
     }
 
     // The selection renderer of vtkControl, the layer between the overlay and the widgets (InitializeGeometry)
@@ -78,7 +200,9 @@ namespace vtkn
         property->SetLineWidth(static_cast<float>(style.line_width));
         property->SetOpacity(1);
         property->BackfaceCullingOff();
-        if (HasOnlyLinesAndPoints(actor->GetMapper()->GetInput()))
+        vtkDataSet* data = actor->GetMapper()->GetInput();
+        bool linesAndPoints = HasOnlyLinesAndPoints(data);
+        if (linesAndPoints)
         {
             property->SetLighting(false);
             property->SetAmbient(1);
@@ -86,8 +210,43 @@ namespace vtkn
             property->SetSpecular(0);
         }
         vtkRenderer* renderer = style.on_geometry ? Renderer.GetPointer() : GetHighlightRenderer();
+        if (!linesAndPoints || style.on_geometry)
+        {
+            renderer->AddActor(actor);
+            Highlights.push_back({ actor, renderer, style.current != 0 });
+            return;
+        }
+        // Round points, and a round dot as wide as the lines on every point of a line, which closes the corners
+        // of thick lines and rounds their ends
+        property->RenderPointsAsSpheresOn();
+        DrawPointsAsFlatRoundDots(actor);
         renderer->AddActor(actor);
         Highlights.push_back({ actor, renderer, style.current != 0 });
+        vtkSmartPointer<vtkPolyData> lineJoints = GetLineJoints(data);
+        if (lineJoints->GetNumberOfVerts() > 0)
+        {
+            vtkSmartPointer<vtkActor> joints = CreateUnlitActor(lineJoints, style.color, style.line_width,
+                                                                style.line_width);
+            renderer->AddActor(joints);
+            Highlights.push_back({ joints, renderer, style.current != 0 });
+        }
+        if (style.current != 0) AddHighlightHalo(data, lineJoints, style);
+    }
+
+    // The lines and points of the mouse highlight wider in a pale shade of its color, on the layer under it, which
+    // sets them off from faces of any color
+    void View::AddHighlightHalo(vtkDataSet* data, vtkPolyData* lineJoints, const vtkn_highlight_style& style)
+    {
+        double color[3];
+        GetHaloColor(style.color, color);
+        double lineWidth = style.line_width + HaloWidth;
+        vtkSmartPointer<vtkActor> halo = CreateUnlitActor(data, color, style.point_size + HaloWidth, lineWidth);
+        HaloRenderer->AddActor(halo);
+        Highlights.push_back({ halo, HaloRenderer.GetPointer(), true });
+        if (lineJoints->GetNumberOfVerts() == 0) return;
+        vtkSmartPointer<vtkActor> joints = CreateUnlitActor(lineJoints, color, lineWidth, lineWidth);
+        HaloRenderer->AddActor(joints);
+        Highlights.push_back({ joints, HaloRenderer.GetPointer(), true });
     }
 
     void View::AddHighlight(const vtkn_mesh& mesh, const vtkn_highlight_style& style)

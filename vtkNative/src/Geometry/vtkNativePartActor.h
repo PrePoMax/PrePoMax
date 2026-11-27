@@ -160,6 +160,8 @@ namespace vtkn
         vtkMTimeType GetDrawnTime();
 
         static constexpr float NodeDotSize = 3;
+        static constexpr float SelectionLineWidth = 2;
+        static constexpr double SelectionTintOpacity = 0.45;
         static constexpr const char* PointNormalsName = "Normals";
 
         vtkn_part_style Style;
@@ -211,6 +213,8 @@ namespace vtkn
 
     // The legacy cell layout of a vtkn_mesh checked whole: every cell's node count and point indices
     void CheckMesh(const vtkn_mesh& mesh, const char* meshName);
+    // The points of an actor that renders them as spheres drawn as flat round dots at the depth of their centers
+    void DrawPointsAsFlatRoundDots(vtkActor* actor);
     // Port of AddNodeAndCellDataToPoly: triangles for the surface cells, lines for the edges, vertices, and when
     // asked the unique element edges
     void BuildPolyData(const vtkn_mesh& mesh, bool extractEdges, vtkSmartPointer<vtkPolyData>& polyActor,

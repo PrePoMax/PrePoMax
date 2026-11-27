@@ -47,6 +47,7 @@ namespace vtkControl.Native
         public int ColorContours;
         public int SectionViewPossible;
         public int Nodal;
+        public int SelectionTint;
 
 
         // Static methods
@@ -81,6 +82,7 @@ namespace vtkControl.Native
             style.KeepOwnColor = data.KeepOwnColor ? 1 : 0;
             style.ColorContours = data.ColorContours ? 1 : 0;
             style.SectionViewPossible = data.SectionViewPossible ? 1 : 0;
+            style.SelectionTint = data.SelectionTint ? 1 : 0;
             return style;
         }
         public static VtkNativeLayer ToNativeLayer(vtkRendererLayer layer)

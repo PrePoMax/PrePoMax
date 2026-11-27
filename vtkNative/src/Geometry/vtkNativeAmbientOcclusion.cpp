@@ -187,9 +187,12 @@ namespace vtkn
     }
 
     // The edge lines of the parts are translucent always, and blended in the order of their actors they look the
-    // same as sorted, so only a translucent face asks for the sorting
+    // same as sorted, so only a translucent face asks for the sorting. The tint of a selection lies on the faces it
+    // marks and blends the same unsorted
     bool View::HasTranslucentFaces()
     {
+        std::set<vtkActor*> selectionTints;
+        for (const auto& selected : SelectedParts) selectionTints.insert(selected->GetGeometry());
         vtkActorCollection* actors = Renderer->GetActors();
         vtkCollectionSimpleIterator iterator;
         actors->InitTraversal(iterator);
@@ -199,6 +202,7 @@ namespace vtkn
             if (!actor->GetVisibility() || actor->GetMapper() == nullptr) continue;
             if (actor->GetProperty()->GetRepresentation() != VTK_SURFACE) continue;
             if (actor->GetProperty()->GetOpacity() >= 1) continue;
+            if (selectionTints.count(actor) > 0) continue;
             //
             vtkPolyData* polyData = vtkPolyData::SafeDownCast(actor->GetMapper()->GetInputDataObject(0, 0));
             if (polyData == nullptr || polyData->GetNumberOfPolys() > 0 || polyData->GetNumberOfStrips() > 0)

@@ -77,18 +77,30 @@ namespace vtkn
         vtkStandardNewMacro(ScreenSizeGlyph);
     }
 
-    // vtkControl draws the selection layer between the overlay and the widgets: four layers, widgets on top
+    // vtkControl draws the selection layer between the overlay and the widgets, and the halo of the mouse highlight
+    // under it: five layers, widgets on top
     void View::InitializeGeometry()
     {
+        HaloRenderer = vtkSmartPointer<vtkRenderer>::New();
+        HaloRenderer->SetLayer(2);
+        HaloRenderer->InteractiveOff();
+        HaloRenderer->SetActiveCamera(Renderer->GetActiveCamera());
+        HaloRenderer->UseOITOff();
+        HaloRenderer->UseDepthPeelingOff();
+        HaloRendererCommand = vtkSmartPointer<vtkCallbackCommand>::New();
+        HaloRendererCommand->SetClientData(this);
+        HaloRendererCommand->SetCallback(OnHaloRendererStart);
+        HaloRenderer->AddObserver(vtkCommand::StartEvent, HaloRendererCommand);
         SelectionRenderer = vtkSmartPointer<vtkRenderer>::New();
-        SelectionRenderer->SetLayer(2);
+        SelectionRenderer->SetLayer(3);
         SelectionRenderer->InteractiveOff();
         SelectionRenderer->SetActiveCamera(Renderer->GetActiveCamera());
         SelectionRenderer->UseOITOff();
         SelectionRenderer->UseDepthPeelingOff();
         for (const auto& light : Lights) SelectionRenderer->AddLight(light);
-        WidgetRenderer->SetLayer(3);
-        RenderWindow->SetNumberOfLayers(4);
+        WidgetRenderer->SetLayer(4);
+        RenderWindow->SetNumberOfLayers(5);
+        RenderWindow->AddRenderer(HaloRenderer);
         RenderWindow->AddRenderer(SelectionRenderer);
         CoorSysSymbols.reset(new CoorSysSymbolSet());
         CoorSysSymbols->SetRenderer(OverlayRenderer);
@@ -259,6 +271,7 @@ namespace vtkn
             actor->AddTo(GetLayerRenderer(*actor));
             actor->GetGeometry()->PickableOff();
             actor->ApplySelectionFormatting(Highlight);
+            AddSelectionHalo(*actor);
             SelectedParts.push_back(std::move(actor));
         }
         if (added->IsAPart()) ApplyEdgesVisibilityAndBackfaceCulling();
@@ -515,6 +528,7 @@ namespace vtkn
         if (what != VTKN_CLEAR_OVERLAY)
         {
             for (PartActor* actor : GetBaseActors()) actor->UpdateColor();
+            ClearSelectionHalos();
             for (const auto& actor : SelectedParts) actor->RemoveFrom(GetLayerRenderer(*actor));
             SelectedParts.clear();
             RemoveCaptions(VTKN_LAYER_SELECTION, nullptr);
@@ -548,7 +562,12 @@ namespace vtkn
         Require(primary != nullptr && secondary != nullptr, "The highlight colors must not be null.");
         std::copy(primary, primary + 3, Highlight.Primary);
         std::copy(secondary, secondary + 3, Highlight.Secondary);
-        for (const auto& actor : SelectedParts) actor->ApplySelectionFormatting(Highlight);
+        ClearSelectionHalos();
+        for (const auto& actor : SelectedParts)
+        {
+            actor->ApplySelectionFormatting(Highlight);
+            AddSelectionHalo(*actor);
+        }
         for (CaptionEntry& entry : Captions)
         {
             if (entry.Layer == VTKN_LAYER_SELECTION) ApplyCaptionSelectionFormatting(entry);

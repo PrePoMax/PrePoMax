@@ -799,7 +799,12 @@ namespace vtkn
     // small dot came out square; a pixel on its edge covers the share of its samples that the circle covers instead
     void PartActor::DrawPointsAsFlatRoundDots()
     {
-        vtkOpenGLShaderProperty* shaderProperty = vtkOpenGLShaderProperty::SafeDownCast(Geometry->GetShaderProperty());
+        vtkn::DrawPointsAsFlatRoundDots(Geometry);
+    }
+
+    void DrawPointsAsFlatRoundDots(vtkActor* actor)
+    {
+        vtkOpenGLShaderProperty* shaderProperty = vtkOpenGLShaderProperty::SafeDownCast(actor->GetShaderProperty());
         if (shaderProperty == nullptr) return;
         shaderProperty->AddFragmentShaderReplacement("//VTK::Depth::Impl", true,
                                                      "//VTK::Depth::Impl\n  gl_FragDepth = gl_FragCoord.z;\n", false);
@@ -1294,8 +1299,9 @@ namespace vtkn
         return toward;
     }
 
-    // Port of ApplySelectionFormattingToActor: nodes and edges in the full highlight color, surfaces darker and
-    // lit, every point larger and a line of the default width wider
+    // Nodes, edges and symbols in the full highlight color, selected surfaces as a lit see-through tint of it that
+    // leaves the shape beneath readable, elements and parts solid and darker, every point larger and a line of the
+    // default width as thick as the outline of a selection
     void PartActor::ApplySelectionFormatting(const HighlightColors& colors)
     {
         if (Style.keep_own_color) return;
@@ -1313,8 +1319,8 @@ namespace vtkn
                 if (cellType != VTK_VERTEX) onlyNodes = false;
             }
         }
-        double k = onlyNodes || onlyEdges ? 1 : 0.7;
         double lighting = onlyNodes || onlyEdges ? 1 : 0.6;
+        bool tint = !onlyNodes && !onlyEdges && Style.selection_tint != 0;
         vtkProperty* property = Geometry->GetProperty();
         if (UnformattedPointSize < 0)
         {
@@ -1323,6 +1329,7 @@ namespace vtkn
         }
         property->SetPointSize(UnformattedPointSize + 2);
         const double* color = Style.use_secondary_highlight_color ? colors.Secondary : colors.Primary;
+        double k = onlyNodes || onlyEdges || tint ? 1 : 0.7;
         property->SetColor(color[0] * k, color[1] * k, color[2] * k);
         property->SetAmbient(lighting);
         property->SetDiffuse(lighting);
@@ -1335,8 +1342,11 @@ namespace vtkn
             property->SetAmbient(0);
             property->SetDiffuse(1);
         }
-        if (UnformattedLineWidth == 1) property->SetLineWidth(2.2f);
-        property->SetOpacity(1);
+        if (UnformattedLineWidth == 1) property->SetLineWidth(SelectionLineWidth);
+        property->SetOpacity(tint ? SelectionTintOpacity : 1);
+        // A see-through tint does not hide the surface of a boundary condition or a load it covers, which lies a step
+        // in front of the parts as it does; it is pulled a step further, in front of it
+        if (tint) Geometry->GetMapper()->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1, -2);
         Geometry->PickableOff();
     }
 }

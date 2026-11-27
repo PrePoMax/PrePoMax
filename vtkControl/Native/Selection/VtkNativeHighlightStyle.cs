@@ -44,7 +44,7 @@ namespace vtkControl.Native
             style.Diffuse = 1;
             style.Specular = 0.2;
             style.PointSize = 7;
-            style.LineWidth = 2;
+            style.LineWidth = 3;
             style.Current = 1;
             return style;
         }

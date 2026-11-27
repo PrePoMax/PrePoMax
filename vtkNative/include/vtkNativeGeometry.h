@@ -202,6 +202,8 @@ typedef struct vtkn_part_style
     int32_t section_view_possible;
     /* The actor is the points of the geometry as vertices, as vtkControl.AddPoints draws them */
     int32_t nodal;
+    /* A surface in the selection layer is drawn as a see-through tint of the highlight color, not as a solid fill */
+    int32_t selection_tint;
 } vtkn_part_style;
 
 /* Parts, the port of the part path of vtkMaxActor and AddCells. Adding a name that exists replaces that part.

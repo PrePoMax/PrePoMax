@@ -367,6 +367,7 @@ namespace vtkn
         for (const auto& entry : BaseActors) entry.second->RemoveFrom(Renderer);
         BaseActors.clear();
         for (const auto& entry : OverlayParts) entry.second->RemoveFrom(OverlayRenderer);
+        if (HaloRenderer != nullptr) ClearSelectionHalos();
         for (const auto& actor : SelectedParts) actor->RemoveFrom(GetLayerRenderer(*actor));
         OverlayParts.clear();
         SelectedParts.clear();

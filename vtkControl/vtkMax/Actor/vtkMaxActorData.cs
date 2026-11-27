@@ -52,6 +52,9 @@ namespace vtkControl
         // The selection layer paints what it holds with the highlight color. A symbol that is drawn
         // there only to be occluded by the model keeps the color it was given.
         public bool KeepOwnColor;
+        // A selected surface is drawn as a see-through tint that leaves the shape beneath it readable; selected
+        // elements and parts stay solid
+        public bool SelectionTint;
         public bool UseSecondaryHighlightColor;
         public vtkMaxActorRepresentation ActorRepresentation;
         public bool SectionViewPossible;
@@ -96,6 +99,7 @@ namespace vtkControl
             UseEdgeVisibility = true;
             SmoothShaded = false;
             DrawOnGeometry = false;
+            SelectionTint = false;
             UseSecondaryHighlightColor = false;
             ActorRepresentation = vtkMaxActorRepresentation.Unknown;
             SectionViewPossible = true;
