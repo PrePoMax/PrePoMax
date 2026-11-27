@@ -22,7 +22,10 @@ namespace CaeMesh
     /// the surface and the evaluation of the surface, and the elements gmsh meshed on the face are replaced. A grid
     /// that cannot be made, folds or has a quad corner below SubmapFaceDetector.MinScaledJacobian leaves the face as
     /// gmsh meshed it; the grid of a curved surface, its rings included, is first smoothed on the surface itself and
-    /// judged there, in space (GmshQuadSurface.SmoothGrid). An edge that turns in its middle is split at its middle
+    /// judged there, in space (GmshQuadSurface.SmoothGrid). On request the grid of a plane face without a ring
+    /// keeps its lattice lines straight where that gives a good grid (SubmapMapping), and at right angles where it
+    /// has no round hole and its boundary nodes lie on such lines. An edge that turns in its middle is split at its
+    /// middle
     /// node into the two logical edges of the face, so it needs an even number of elements; one that turns twice at its nodes at a quarter and three quarters
     /// into three, so it needs a multiple of four. The nodes of the holes of a face are read loop by loop as those of
     /// its outer loop, and the holes are placed in the lattice by SubmapHolePlacement on the parameters of the nodes;
@@ -206,10 +209,13 @@ namespace CaeMesh
             SubmapFace[] loops = face.Loops;
             int[][] loopDirections = face.LoopLogicalEdgeDirections;
             bool curved = Gmsh.Model.GetType(2, surfaceId) != "Plane";
-            keepOrthogonal = keepOrthogonal && loops.All(loop => !loop.IsRound) && !curved;
+            bool keepStraight = keepOrthogonal && !curved;
+            keepOrthogonal = keepStraight && loops.All(loop => !loop.IsRound);
             double[][][][] gridXyz;
             double[][][][] gridUv;
             GetRingLoops(surfaceId, loops, loopXyz, loopUv, out gridXyz, out gridUv);
+            // The nodes a ring is laid on are moved with those of the grid, which then keeps no straight lines
+            for (int l = 0; l < loops.Length; l++) keepStraight = keepStraight && ReferenceEquals(gridUv[l], loopUv[l]);
             try
             {
                 grid = SubmapMapping.Map(loopDirections, gridUv, gridXyz, holeOffsets, uv =>
@@ -217,7 +223,7 @@ namespace CaeMesh
                     double[] coor;
                     Gmsh.Model.GetValue(2, surfaceId, uv, out coor);
                     return coor;
-                }, keepOrthogonal);
+                }, keepOrthogonal, keepStraight);
             }
             catch (CaeException ex)
             {

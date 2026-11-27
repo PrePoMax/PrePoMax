@@ -1218,6 +1218,11 @@ The mapper places the holes from the meshed boundary, breaking near-ties in offs
 The outer logical outline uses edge lengths scaled to close the outline. An affine fit maps the hole corners into
 that frame. Aligned planar shell submaps without a round loop or lens fallback place interior nodes at crossings
 of perpendicular lattice lines; a line that a hole or a reentrant corner cuts may lie differently in each piece.
+Any other planar submap without a lens fallback and without a ring around a round hole places its inner nodes where
+its lattice lines cross, each the straight line between the two boundary nodes it ends on, when no quad corner of that
+grid has a scaled Jacobian below 0.5. Such a grid is not smoothed, so its lines stay straight, and at right angles
+where the boundary nodes face each other, up to a hole or a fillet; the size of the elements changes there instead.
+Where the straight lines give no such grid, and around a ring, the inner nodes are smoothed.
 Lean is the arctangent of the mismatch along the sides divided by the distance between facing nodes. Below 5 degrees
 of initial largest lean, a chain keeps a match only if every face bordering a moved edge belongs to a spacing
 chain and the largest remaining lean is at most 0.1 degrees. A moved submap with only cornered loops must reach a
@@ -1225,8 +1230,10 @@ worst scaled Jacobian of 0.9999. A moved submap with a round hole needs a valid 
 drops by at most 0.02 from the original valid grid. At or above 5 degrees, the mesher restores the chain if an
 originally accepted submap is refused or its worst scaled Jacobian falls below 0.5 and drops by more than 0.02.
 Vertices, element counts, and nodes on submap turn edges and on the rims of round holes stay fixed. Moved nodes
-keep at least a third of the even spacing between them. Edges owned by other structured meshers or bordering free
-faces less than three elements deep stay fixed.
+keep at least a third of the even spacing between them. The nodes of a moved edge are evened out as far as the
+matching lets them: between two nodes that a match holds in place the others are spaced as the edge was meshed,
+evenly on an edge of one element size, so no wide element is left beside thin ones away from the match. Edges owned
+by other structured meshers or bordering free faces less than three elements deep stay fixed.
 For chains at or above 5 degrees, a submap refused on both boundaries leaves the chain and matching restarts.
 A free face beside a moved edge is trialled on that boundary. If its worst scaled Jacobian falls below 0.5 and by
 more than 0.02 from the original boundary, its edges stay fixed for the rematch. Trials cover None, Simple, Blossom

@@ -36,6 +36,11 @@ namespace CaeMesh
     /// When the grid still folds but the start did not, the start is relaxed by steps that never fold a quad.
     /// On request a lattice whose boundary nodes already lie on straight perpendicular lines takes its inner nodes at
     /// the crossings of those lines and is not smoothed, so that it keeps its right angles under uneven spacing.
+    /// Also on request any other lattice takes its inner nodes where its two lattice lines through each cross, each
+    /// the straight line between the two boundary nodes it ends on, and is not smoothed either, when no quad corner
+    /// of that grid is below MinStraightGridQuality: where the boundary nodes face each other the lines then stay
+    /// straight and at right angles up to a hole or a fillet, which the smoothing would bend all over the face to
+    /// even the quads out.
     /// The arithmetic is plain and ordered, so that a port gives the same grid.
     /// </summary>
     public static class SubmapMapping
@@ -45,6 +50,7 @@ namespace CaeMesh
         private const double WinslowTolerance = 1E-6;
         private const double AlignedCoordinateTolerance = 1E-7;
         private const double MinAlignedGridQuality = 0.999999;
+        private const double MinStraightGridQuality = 0.5;
         private static readonly int[] DirectionI = new int[] { 1, 0, -1, 0 };
         private static readonly int[] DirectionJ = new int[] { 0, 1, 0, -1 };
 
@@ -283,10 +289,11 @@ namespace CaeMesh
         public static SubmapGrid Map(int[][] loopDirections, double[][][][] loopUv, double[][][][] loopXyz,
                                      int[][] holeOffsets, Func<double[], double[]> evaluate)
         {
-            return Map(loopDirections, loopUv, loopXyz, holeOffsets, evaluate, false);
+            return Map(loopDirections, loopUv, loopXyz, holeOffsets, evaluate, false, false);
         }
         internal static SubmapGrid Map(int[][] loopDirections, double[][][][] loopUv, double[][][][] loopXyz,
-                                       int[][] holeOffsets, Func<double[], double[]> evaluate, bool keepOrthogonal)
+                                       int[][] holeOffsets, Func<double[], double[]> evaluate, bool keepOrthogonal,
+                                       bool keepStraight)
         {
             int numOfLoops = loopDirections == null ? 0 : loopDirections.Length;
             if (numOfLoops == 0 || loopUv == null || loopXyz == null || loopUv.Length != numOfLoops ||
@@ -444,7 +451,11 @@ namespace CaeMesh
             bool aligned = keepOrthogonal && TrySetOrthogonalPoints(points, nodeIds, boundaryI, boundaryJ, nextNodeIds,
                                                                      rowLength, height) &&
                            QuadSmoothing.GetMinScaledJacobian(points, quadArray, orientation) >= MinAlignedGridQuality;
-            if (!aligned)
+            bool straight = !aligned && keepStraight &&
+                            TrySetStraightLinePoints(points, nodeIds, numOfBoundaryNodes, rowLength, height) &&
+                            QuadSmoothing.GetMinScaledJacobian(points, quadArray, orientation) >=
+                            MinStraightGridQuality;
+            if (!aligned && !straight)
             {
                 SetLatticeLinePoints(points, nodeIds, logical, numOfBoundaryNodes, rowLength, height);
                 int[][] neighbours = ThreeBlockMapping.GetNeighbours(numOfNodes, quads);
@@ -555,6 +566,38 @@ namespace CaeMesh
                 double yj = innerY[n];
                 points[numOfBoundaryNodes + n] = new double[] { origin[0] + dx * xi - dy * yj,
                                                                 origin[1] + dy * xi + dx * yj };
+            }
+            return true;
+        }
+        /// <summary>
+        /// Places every inner node where its two lattice lines cross, each the straight line between the two boundary
+        /// nodes it ends on. False when the two lines of a node do not cross between their ends.
+        /// </summary>
+        private static bool TrySetStraightLinePoints(double[][] points, int[] nodeIds, int numOfBoundaryNodes,
+                                                     int rowLength, int height)
+        {
+            int numOfInnerNodes = points.Length - numOfBoundaryNodes;
+            int[] firstI = new int[numOfInnerNodes];
+            int[] lastI = new int[numOfInnerNodes];
+            int[] firstJ = new int[numOfInnerNodes];
+            int[] lastJ = new int[numOfInnerNodes];
+            SetLineEndsAlongI(nodeIds, numOfBoundaryNodes, rowLength, height, firstI, lastI);
+            SetLineEndsAlongJ(nodeIds, numOfBoundaryNodes, rowLength, height, firstJ, lastJ);
+            for (int n = 0; n < numOfInnerNodes; n++)
+            {
+                if (firstI[n] < 0 || lastI[n] < 0 || firstJ[n] < 0 || lastJ[n] < 0) return false;
+                double[] a = points[firstI[n]];
+                double[] c = points[firstJ[n]];
+                double ux = points[lastI[n]][0] - a[0];
+                double uy = points[lastI[n]][1] - a[1];
+                double vx = points[lastJ[n]][0] - c[0];
+                double vy = points[lastJ[n]][1] - c[1];
+                double determinant = ux * vy - uy * vx;
+                if (determinant == 0) return false;
+                double t = ((c[0] - a[0]) * vy - (c[1] - a[1]) * vx) / determinant;
+                double s = ((c[0] - a[0]) * uy - (c[1] - a[1]) * ux) / determinant;
+                if (!(t > 0 && t < 1 && s > 0 && s < 1)) return false;
+                points[numOfBoundaryNodes + n] = new double[] { a[0] + t * ux, a[1] + t * uy };
             }
             return true;
         }

@@ -4,14 +4,14 @@
 #Checks opposite-side node spacing on structured shell faces. Split plates and strips cover pinned counts, shared
 #edges, differently sized sides, and the grid and free-mesh choices. A cylinder, ring sector and cone test curved
 #sides. Two faces cut from extruded solids check both orientations. L and U parts cover submap alignment and
-#propagation. Two pins on a sharp L give right-angled grids. On the filleted L, the quality veto restores the
-#original boundary and grid. Other controls cover an unchanged hole and different-shaped sides, a retained
-#low-gain chain, and edges held fixed by thin neighbours.
+#propagation. Two pins on a sharp L give right-angled grids. The filleted L keeps its matched boundary with the
+#straight lines of its grid, at 46 elements on its long edge too. Other controls cover an unchanged hole and
+#different-shaped sides, a retained low-gain chain, and edges held fixed by thin neighbours.
 #Below 5 degrees, a split plate and the user's rectangular frame scaled by 1/11 can align. Fixed split vertices
 #or a shared edge beside a free face can prevent alignment and leave the whole mesh unchanged. A second frame
 #has a wall a third of the default element size. The GmshCommon generator is
 #Models/Generators/Make_Side_Spacing.py. Closed shells from the fillet3 and twist examples cover the removal
-#of refused submaps and the guard for a free face beside a chain.
+#of refused submaps and a free face beside a chain, which keeps the evened boundary as it stays above 0.5.
 #A strip shares its pin pattern with a plate through a round hole at both sides of the 5-degree threshold.
 #A mixed-hole plate aligns the cornered hole with its outer edges while both cases keep their round rims fixed.
 #
@@ -196,7 +196,7 @@ def fractions_lean(rows, height):
 def check_baseline(label, grid):
     fingerprints = {
         "different shape": "f38987573725471903b8a480eb24d1d36fd215761ad774c5c94b054f6bcdc2af",
-        "filleted L quality veto": "b7be82287d52252813f54bb464f2d1d9882e9982e4f58fd4207d4b2b05ed8010",
+        "filleted L with 46 elements": "2a4a512343d6fd737df68453c316d751de1e54a89e8b167a74ef7e56cc1b2ef0",
         "hole plate": "9a70daade7aa049577d0d3137d71f2e4f2fc79c2a531b59c86b56386162033b0",
         "below threshold with fixed vertices": "6112b70cbf9f86544be1a2e3e3ec852c4a5f64c8844fd6afb359ea1e46fbc850",
         "below threshold with a free neighbour": "93e59d09cfd2a4a72d050f8901bf9414d283bbfbba99ff2605582bb5bf5ac22d",
@@ -289,8 +289,8 @@ print("  trapezoid fingerprint " + grid.fingerprint())
 check(grid.node_counts == {4} and not output and lean < 0.1, "the trapezoid's side fractions differ")
 check_count(rows[0], 0, 30, 12)
 
-free_neighbour_baseline = {"Simple": "a03b1408dfefa78f36834525caad8d7488341a4fd4ca36a3dbbc43d474f65d97",
-                           "QuadDominant": "c6b8d290e1c4343c64af304fc2b12d0309a6dfa70c3d60e96d9aeffb39016929"}
+free_neighbour_baseline = {"Simple": "25b0c6eaed336f4c3e5abe8d9c3044819aed49633ba948bd55583194bd304a0d",
+                           "QuadDominant": "7baffc0c5e37aa5e797b4aef01e509ae22b35b6fb1f55d1330f66f49442e4ec7"}
 for recombine in ("Simple", "QuadDominant"):
     grid, rows, lean, worst, output = case("free neighbour " + recombine, 1200, 12, recombine=recombine)
     plate = [element for element in grid.elements if max(grid.uv[node][1] for node in element) <= 40 + EPS]
@@ -428,15 +428,13 @@ print("  fillet boundary fingerprint " + fingerprint_rows(grid, arc))
 check(fingerprint_rows(grid, arc) == "28e8a7d49ea703fceb92a98b182a76a93c497946a4edada146251f8d7e47012f",
       "the fillet's arc nodes moved")
 
-label = "filleted L quality veto"
+label = "filleted L with 46 elements"
 grid, lean, worst, output = measure(label, 2850, ((70, 40, 46),), lambda g: math.degrees(
     math.atan2(abs(g.row(0)[len(g.row(80))] - 30), 40)))
-check(grid.node_counts == {4} and len(grid.elements) == 600 and not output, "the vetoed L lost its submapped grid")
-check(lean > 20 and abs(worst - 0.554068) < EPS, "the vetoed L did not recover its original grid")
+check(grid.node_counts == {4} and len(grid.elements) == 600 and not output,
+      "the L with 46 elements lost its submapped grid")
+check(lean < 2 and abs(worst - 0.707107) < EPS, "the L with 46 elements did not keep its matched grid of straight lines")
 check_count(grid.row(40), 30, 100, 46)
-boundary = boundary_nodes(parts[2850], lambda *_: True)
-check(fingerprint_rows(grid, boundary) == "edba55cc9a17371c8c4dd22cc06cd634ba76a43617d4b792120f329a78c8dca2",
-      "the vetoed L did not restore its boundary")
 check_baseline(label, grid)
 
 grid, lean, worst, output = measure("hole plate", 3000, (), lambda g: max_lean(g.row(0), g.row(40), 40))
@@ -562,14 +560,14 @@ def check_free_face_guard():
     grid = FaceMesh(part, planar(4350))
     free = face_elements(part, grid, 6)
     submap = face_elements(part, grid, 9)
-    check(boundary_fingerprint(grid, free) == "bc90d909fd813d1b34b258bc17098202a05d7147e23abe38e4c9bc98ec1bf83f",
-          "the poor free face did not recover its fixed boundary")
-    check(len(free) == 683 and abs(grid.worst_corner(free) - 0.644742) < EPS,
-          "the poor free face did not recover its baseline quality")
-    check(grid.fingerprint(free) == "98cb8c2d37e34025d3edf6299df0043fa05e1e3a481f0c9d8a2ae38aedb85c70",
-          "the poor free face changed from its baseline mesh")
-    check(len(submap) == 476 and abs(grid.worst_corner(submap) - 0.414856) < EPS,
-          "spacing did not rematch the chain around the fixed free face")
+    check(boundary_fingerprint(grid, free) == "471f3bf6fa6b710678b31fa493a48f315bec432b4e8e0b261221f7f019a439d9",
+          "the free face beside the chain did not keep its matched boundary")
+    check(len(free) == 704 and abs(grid.worst_corner(free) - 0.568664) < EPS,
+          "the free face beside the chain fell below 0.5 or changed quality")
+    check(grid.fingerprint(free) == "77bb5bec4cf704c38c3f642d66c4cd6965aa091c561ac0243b51af7af6fd8dd9",
+          "the free face beside the chain changed from its baseline mesh")
+    check(len(submap) == 476 and abs(grid.worst_corner(submap) - 0.421954) < EPS,
+          "the chain beside the free face changed its grid")
 
 
 check_refused_patches()
@@ -620,7 +618,7 @@ def check_mixed_holes():
     check(len(grid.elements) == 280 and grid.node_counts == {4} and not output,
           "the mixed-hole plate lost its grid: " + str(len(grid.elements)))
     quality = grid.worst_corner()
-    check(abs(quality - 0.891953) < EPS, "the mixed-hole grid changed quality: " + str(quality))
+    check(abs(quality - 0.877723) < EPS, "the mixed-hole grid changed quality: " + str(quality))
 
     def column(x):
         return sorted(y for u, y in grid.uv.values() if abs(u - x) < EPS)
@@ -645,8 +643,8 @@ def check_mixed_holes():
     print("mixed holes: 264 quads, worst %.6f" % quality)
 
 
-check_round_strip(12, 26, 307, 0.699103, 0.789909)
-check_round_strip(7, 21, 247, 0.797380, 0.771253)
+check_round_strip(12, 26, 307, 0.663508, 0.789909)
+check_round_strip(7, 21, 247, 0.789082, 0.771253)
 check_mixed_holes()
 
 print("TEST PASSED")

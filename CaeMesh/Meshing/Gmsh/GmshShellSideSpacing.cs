@@ -17,6 +17,9 @@ namespace CaeMesh
 {
     /// <summary>
     /// Matches boundary nodes across shared edges of four-sided and submapped shell faces, through round holes.
+    /// The nodes are moved as little as makes the pairs agree and are then evened out along their edges, in the
+    /// intervals the edges were meshed with, as far as the pairs let them: between two nodes that a pair holds the
+    /// others keep the grading gmsh gave the edge.
     /// A chain below MinLeanDegrees moves no edge beside a face outside the chains and must reach StraightLeanDegrees.
     /// A moved submap must reach RightAngleQuality, or keep a valid grid within QualityTolerance of the original
     /// quality if it has a round hole. Larger leans allow free faces to share moved edges.
@@ -38,6 +41,8 @@ namespace CaeMesh
         private const double RelaxationTolerance = 1E-10;
         private const double FreeFaceDepth = 3;
         private const int MaxRelaxationSteps = 512;
+        private const int MaxEveningSteps = 2000;
+        private const double EveningTolerance = 1E-7;
 
 
         // Methods                                                                                                      
@@ -248,20 +253,42 @@ namespace CaeMesh
             HashSet<GmshShellSpacingEdge> known = new HashSet<GmshShellSpacingEdge>();
             foreach (GmshShellSpacingPatch patch in chain) patch.MarkSplitEdges(known);
             foreach (GmshShellSpacingPatch patch in chain) patch.CopyKnownSpacing(known);
-            for (int step = 0; step < MaxRelaxationSteps; step++)
+            // The nodes are moved until the pairs agree, which moves them as little as that takes, and then evened out
+            // along their edges, a step at a time with the pairs put right again after each, until they settle
+            double[][] fractions = new double[chainEdges.Length][];
+            for (int evening = 0; evening <= MaxEveningSteps; evening++)
             {
-                foreach (GmshShellSpacingPatch patch in chain)
+                for (int step = 0; step < MaxRelaxationSteps; step++)
                 {
-                    foreach (var pair in patch.Pairs)
+                    foreach (GmshShellSpacingPatch patch in chain)
                     {
-                        double error = pair.Second.Coordinate - pair.First.Coordinate;
-                        pair.First.AddError(error);
-                        pair.Second.AddError(-error);
+                        foreach (var pair in patch.Pairs)
+                        {
+                            double error = pair.Second.Coordinate - pair.First.Coordinate;
+                            pair.First.AddError(error);
+                            pair.Second.AddError(-error);
+                        }
+                    }
+                    double change = 0;
+                    foreach (GmshShellSpacingEdge edge in chainEdges) change = Math.Max(change, edge.Relax());
+                    if (change <= RelaxationTolerance) break;
+                }
+                double evened = 0;
+                for (int e = 0; e < chainEdges.Length; e++)
+                {
+                    if (fractions[e] == null)
+                    {
+                        fractions[e] = new double[chainEdges[e].NumOfNodes];
+                        evened = double.MaxValue;
+                    }
+                    for (int k = 0; k < fractions[e].Length; k++)
+                    {
+                        evened = Math.Max(evened, Math.Abs(chainEdges[e].GetFraction(k) - fractions[e][k]));
+                        fractions[e][k] = chainEdges[e].GetFraction(k);
                     }
                 }
-                double change = 0;
-                foreach (GmshShellSpacingEdge edge in chainEdges) change = Math.Max(change, edge.Relax());
-                if (change <= RelaxationTolerance) break;
+                if (evened <= EveningTolerance || evening == MaxEveningSteps) break;
+                foreach (GmshShellSpacingEdge edge in chainEdges) edge.Even();
             }
             if (exact && GetMaximumLean(chain) > StraightLeanDegrees)
             {
