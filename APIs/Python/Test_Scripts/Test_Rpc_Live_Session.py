@@ -1143,13 +1143,13 @@ def check_journal_of_dialog_appearance(client):
         "pmx.create.friction(0.1)])",
         "pmx.model.contact_pairs.add('look_pair', 'look_si', face(3), face(4), adjustment_size=0.01, "
         "master_color=[10, 20, 30], slave_color='Red')",
-        "pmx.model.contact_pairs.replace('look_pair', adjustment_size=float('nan'), master_color='Yellow')",
+        "pmx.model.contact_pairs.replace('look_pair', adjustment_size=float('nan'), master_color='Gold')",
         # Two surface colors on a tie, taken back to the default, and one color on the other constraints
         "pmx.model.constraints.add_tie('look_tie', face(5), face(6), master_color=[1, 2, 3], slave_color=[4, 5, 6, 7])",
-        "pmx.model.constraints.replace_tie('look_tie', slave_color='Yellow')",
+        "pmx.model.constraints.replace_tie('look_tie', slave_color='Gold')",
         "pmx.model.constraints.add_rigid_body('look_rigid', 'look_rp', nodes, color='Green')",
         "pmx.model.constraints.add_point_spring('look_spring', nodes, k1=1, color=[9, 8, 7])",
-        "pmx.model.constraints.replace_point_spring('look_spring', color='Yellow')",
+        "pmx.model.constraints.replace_point_spring('look_spring', color='Gold')",
         "pmx.model.initial_conditions.add_temperature('look_temperature', nodes, 20, color=[50, 60, 70])"])
     result = client.result("exec", {"source": source})
     check(not result["failed"], "the surface types and colors must be accepted: " + result["error"])
@@ -1157,11 +1157,11 @@ def check_journal_of_dialog_appearance(client):
     check(recorded[0:3] == ["Node", "Node", "Element"], "the surface types were not kept: " + str(recorded))
     check(recorded[3] is True and recorded[4] is None, "the adjustment size did not go back to Default: " +
           str(recorded))
-    check(recorded[5] == [255, 255, 0, 255] and recorded[6] == [255, 0, 0, 255],
+    check(recorded[5] == [255, 215, 0, 255] and recorded[6] == [255, 0, 0, 255],
           "the contact pair colors were not kept: " + str(recorded))
-    check(recorded[7] == [1, 2, 3, 255] and recorded[8] == [255, 255, 0, 255],
+    check(recorded[7] == [1, 2, 3, 255] and recorded[8] == [255, 215, 0, 255],
           "the tie colors were not kept: " + str(recorded))
-    check(recorded[9] == [0, 128, 0, 255] and recorded[10] == [255, 255, 0, 255],
+    check(recorded[9] == [0, 128, 0, 255] and recorded[10] == [255, 215, 0, 255],
           "the constraint colors were not kept: " + str(recorded))
     check(recorded[11] == [50, 60, 70, 255], "the initial condition color was not kept: " + str(recorded))
     result = client.result("history", {"include_journal": True})
@@ -1171,9 +1171,9 @@ def check_journal_of_dialog_appearance(client):
     journal_source = journal["source"]
     # An add leaves the defaults out, a replace writes them, because a replace keeps what it is not given
     for expected in ["surface_type='Node'", "surface_type='Element'", "adjustment_size=float('nan')",
-                     "master_color=[10, 20, 30]", "slave_color=[255, 0, 0]", "master_color=[255, 255, 0]",
-                     "slave_color=[4, 5, 6, 7]", "slave_color=[255, 255, 0]", "color=[0, 128, 0]",
-                     "color=[9, 8, 7]", "color=[255, 255, 0]", "color=[50, 60, 70]"]:
+                     "master_color=[10, 20, 30]", "slave_color=[255, 0, 0]", "master_color=[255, 215, 0]",
+                     "slave_color=[4, 5, 6, 7]", "slave_color=[255, 215, 0]", "color=[0, 128, 0]",
+                     "color=[9, 8, 7]", "color=[255, 215, 0]", "color=[50, 60, 70]"]:
         check(expected in journal_source, expected + " is missing from the journal:" + os.linesep + journal_source)
     check("adjustment_size=None" not in journal_source, "a Default adjustment size has no None form:" + os.linesep +
           journal_source)

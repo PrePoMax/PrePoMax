@@ -109,7 +109,7 @@ namespace CaeModel
             get
             {
                 // Compatibility for version v0.6.0
-                if (_masterColor == Color.Empty) _masterColor = Color.Yellow;
+                if (_masterColor == Color.Empty) _masterColor = Constraint.DefaultColor;
                 //
                 return _masterColor;
             }
@@ -120,7 +120,7 @@ namespace CaeModel
             get
             {
                 // Compatibility for version v0.6.0
-                if (_slaveColor == Color.Empty) _slaveColor = Color.Yellow;
+                if (_slaveColor == Color.Empty) _slaveColor = Constraint.DefaultColor;
                 //
                 return _slaveColor;
             }
@@ -160,8 +160,8 @@ namespace CaeModel
             _masterCreationIds = null;
             _masterCreationData = null;
             //
-            _masterColor = Color.Yellow;
-            _slaveColor = Color.Yellow;
+            _masterColor = Constraint.DefaultColor;
+            _slaveColor = Constraint.DefaultColor;
         }
 
 

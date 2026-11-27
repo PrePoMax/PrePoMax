@@ -415,7 +415,7 @@ def test_initial_conditions():
     conditions.show(PREFIX + "Temp")
     check(conditions[PREFIX + "Temp"].visible, "the initial condition was not shown")
     # The symbol color, read back as a list that goes back into the argument
-    check(list(conditions[PREFIX + "Temp"].color) == [255, 165, 0, 255],
+    check(list(conditions[PREFIX + "Temp"].color) == [32, 178, 170, 255],
           "unexpected default color " + str(list(conditions[PREFIX + "Temp"].color)))
     condition = conditions.add_translational_velocity(PREFIX + "Vel_C", selection, 1, 0, 0, color=[10, 20, 30])
     check(list(condition.color) == [10, 20, 30, 255], "the color was not set: " + str(list(condition.color)))

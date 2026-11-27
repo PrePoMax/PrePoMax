@@ -41,8 +41,8 @@ namespace PrePoMax
         //
         [PmxKey(13)] private AnnotationBackgroundType _colorBarBackgroundType;
         [PmxKey(14)] private bool _colorBarDrawBorder;
-        // The highlight colors of a settings file written before the selection turned blue are brought up to date once
-        [PmxKey(15)] [OptionalField] private int _highlightColorsRevision;
+        // The default colors a settings file was written with are brought up to date once when the defaults change
+        [PmxKey(15)] [OptionalField] private int _defaultColorsRevision;
 
 
         // Properties                                                                                                               
@@ -147,11 +147,24 @@ namespace PrePoMax
         public void CheckValues()
         {
         }
-        public void UpgradeHighlightColors()
+        public void UpgradeDefaultColors()
         {
-            if (_highlightColorsRevision >= 1) return;
-            if (_primaryHighlightColor.ToArgb() == Color.Red.ToArgb()) _primaryHighlightColor = Color.DodgerBlue;
-            _highlightColorsRevision = 1;
+            if (_defaultColorsRevision < 1 && _primaryHighlightColor.ToArgb() == Color.Red.ToArgb())
+                _primaryHighlightColor = Color.DodgerBlue;
+            if (_defaultColorsRevision < 2)
+            {
+                if (_constraintSymbolColor.ToArgb() == Color.Yellow.ToArgb())
+                    _constraintSymbolColor = CaeModel.Constraint.DefaultColor;
+                if (_initialConditionSymbolColor.ToArgb() == Color.Orange.ToArgb())
+                    _initialConditionSymbolColor = CaeModel.InitialCondition.DefaultColor;
+                if (_boundaryConditionSymbolColor.ToArgb() == Color.Lime.ToArgb())
+                    _boundaryConditionSymbolColor = CaeModel.BoundaryCondition.DefaultColor;
+                if (_loadSymbolColor.ToArgb() == Color.RoyalBlue.ToArgb())
+                    _loadSymbolColor = CaeModel.Load.DefaultColor;
+                if (_definedFieldSymbolColor.ToArgb() == Color.Tomato.ToArgb())
+                    _definedFieldSymbolColor = CaeModel.DefinedField.DefaultColor;
+            }
+            _defaultColorsRevision = 2;
         }
         public void Reset()
         {
@@ -159,11 +172,11 @@ namespace PrePoMax
             _secondaryHighlightColor = Color.Violet;
             _mouseHighlightColor = Color.Orange;
             _geometrySelectMode = GeometrySelectModeEnum.SelectLocation;
-            _constraintSymbolColor = Color.Yellow;
-            _initialConditionSymbolColor = Color.Orange;
-            _boundaryConditionSymbolColor = Color.Lime;
-            _loadSymbolColor = Color.RoyalBlue;
-            _definedFieldSymbolColor = Color.Tomato;
+            _constraintSymbolColor = CaeModel.Constraint.DefaultColor;
+            _initialConditionSymbolColor = CaeModel.InitialCondition.DefaultColor;
+            _boundaryConditionSymbolColor = CaeModel.BoundaryCondition.DefaultColor;
+            _loadSymbolColor = CaeModel.Load.DefaultColor;
+            _definedFieldSymbolColor = CaeModel.DefinedField.DefaultColor;
             _splitToolSymbolColor = vtkControl.vtkMaxWidgetHighlight.BorderColor;
             _symbolSize = 50;
             _nodeSymbolSize = 5;

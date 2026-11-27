@@ -41,6 +41,7 @@ namespace CaeModel
 
 
         // Properties                                                                                                               
+        public static Color DefaultColor { get { return Color.Gold; } }
         public string MasterRegionName { get { return _masterRegionName; } set { _masterRegionName = value; } }
         public RegionTypeEnum MasterRegionType { get { return _masterRegionType; } set { _masterRegionType = value; } }
         public string SlaveRegionName { get { return _slaveRegionName; } set { _slaveRegionName = value; } }
@@ -72,8 +73,8 @@ namespace CaeModel
             _slaveCreationIds = null;
             _slaveCreationData = null;
             //
-            _masterColor = Color.Yellow;
-            _slaveColor = Color.Yellow;
+            _masterColor = DefaultColor;
+            _slaveColor = DefaultColor;
             //
             _twoD = twoD;
         }

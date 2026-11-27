@@ -371,7 +371,7 @@ def test_contact_pairs():
     pair = pairs.replace(PAIR, adjust=False)
     check(pair.method == "Massless" and not pair.small_sliding, "a replace changed the method or small sliding")
     # The colors of the two surfaces, read back as lists that go back into the arguments
-    check(list(pair.master_color) == [255, 255, 0, 255] and list(pair.slave_color) == [255, 255, 0, 255],
+    check(list(pair.master_color) == [255, 215, 0, 255] and list(pair.slave_color) == [255, 215, 0, 255],
           "unexpected default colors " + str(list(pair.master_color)) + ", " + str(list(pair.slave_color)))
     pair = pairs.replace(PAIR, master_color=[10, 20, 30], slave_color="Red")
     check(list(pair.master_color) == [10, 20, 30, 255], "the master color was not set: " + str(list(pair.master_color)))

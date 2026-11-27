@@ -505,10 +505,10 @@ def test_springs_and_compression_only():
 
 def test_colors():
     constraints = pmx.model.constraints
-    yellow = [255, 255, 0, 255]
+    gold = [255, 215, 0, 255]
     # A tie colors its two surfaces, as the dialog shows them
     tie = constraints[PREFIX + "Tie"]
-    check(list(tie.master_color) == yellow and list(tie.slave_color) == yellow,
+    check(list(tie.master_color) == gold and list(tie.slave_color) == gold,
           "unexpected default tie colors " + str(list(tie.master_color)) + ", " + str(list(tie.slave_color)))
     tie = constraints.replace_tie(PREFIX + "Tie", master_color=[10, 20, 30], slave_color="Blue")
     check(list(tie.master_color) == [10, 20, 30, 255], "the master color was not set: " + str(list(tie.master_color)))

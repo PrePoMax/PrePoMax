@@ -33,6 +33,7 @@ namespace CaeModel
 
 
         // Properties                                                                                                               
+        public static Color DefaultColor { get { return Color.PaleVioletRed; } }
         public string RegionName { get { return _regionName; } set { _regionName = value; } }
         public RegionTypeEnum RegionType { get { return _regionType; } set { _regionType = value; } }
         public int[] CreationIds { get { return _creationIds; } set { _creationIds = value; } }
@@ -55,7 +56,7 @@ namespace CaeModel
             get
             {
                 // Compatibility for version v2.2.6
-                if (_color == Color.Empty) _color = Color.Tomato;
+                if (_color == Color.Empty) _color = DefaultColor;
                 //
                 return _color;
             }
@@ -72,7 +73,7 @@ namespace CaeModel
             _creationIds = null;
             _creationData = null;
             _amplitudeName = null;
-            _color = Color.Tomato;
+            _color = DefaultColor;
         }
         public DefinedField(SerializationInfo info, StreamingContext context)
             : base(info, context)

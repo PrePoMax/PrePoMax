@@ -36,6 +36,7 @@ namespace CaeModel
 
 
         // Properties                                                                                                               
+        public static Color DefaultColor { get { return Color.LimeGreen; } }
         public string RegionName { get { return _regionName; } set { _regionName = value; } }
         public RegionTypeEnum RegionType { get { return _regionType; } set { _regionType = value; } }
         public int[] CreationIds { get { return _creationIds; } set { _creationIds = value; } }
@@ -74,7 +75,7 @@ namespace CaeModel
             get
             {
                 // Compatibility for version v0.6.0
-                if (_color == Color.Empty) _color = Color.Lime;
+                if (_color == Color.Empty) _color = DefaultColor;
                 //
                 return _color;
             }
@@ -96,7 +97,7 @@ namespace CaeModel
             _coordinateSystemName = null;
             _complex = complex;
             PhaseDeg = new EquationContainer(typeof(StringAngleDegConverter), phaseDeg, null, constant);
-            _color = Color.Lime;
+            _color = DefaultColor;
         }
         public BoundaryCondition(SerializationInfo info, StreamingContext context)
             : base(info, context)

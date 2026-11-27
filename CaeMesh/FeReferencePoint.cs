@@ -267,7 +267,7 @@ namespace CaeMesh
             ClearRegionData();
             //
             _nameVisible = true;    // must be here
-            _color = Color.Yellow;  // must be here
+            _color = Color.Gold;    // must be here
         }
         private void ClearRegionData()
         {

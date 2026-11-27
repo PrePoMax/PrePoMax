@@ -328,7 +328,7 @@ namespace CaeMesh
             //
             _nameVisible = true;
             _twoD = false;
-            _color = Color.Yellow;
+            _color = Color.Gold;
             //
             EquationChanged();
         }
