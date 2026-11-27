@@ -17,6 +17,7 @@ using CaeGlobals;
 using System.IO;
 using DynamicTypeDescriptor;
 using System.Drawing;
+using System.Runtime.Serialization;
 
 namespace PrePoMax
 {
@@ -40,6 +41,8 @@ namespace PrePoMax
         //
         [PmxKey(13)] private AnnotationBackgroundType _colorBarBackgroundType;
         [PmxKey(14)] private bool _colorBarDrawBorder;
+        // The highlight colors of a settings file written before the selection turned blue are brought up to date once
+        [PmxKey(15)] [OptionalField] private int _highlightColorsRevision;
 
 
         // Properties                                                                                                               
@@ -144,9 +147,15 @@ namespace PrePoMax
         public void CheckValues()
         {
         }
+        public void UpgradeHighlightColors()
+        {
+            if (_highlightColorsRevision >= 1) return;
+            if (_primaryHighlightColor.ToArgb() == Color.Red.ToArgb()) _primaryHighlightColor = Color.DodgerBlue;
+            _highlightColorsRevision = 1;
+        }
         public void Reset()
         {
-            _primaryHighlightColor = Color.Red;
+            _primaryHighlightColor = Color.DodgerBlue;
             _secondaryHighlightColor = Color.Violet;
             _mouseHighlightColor = Color.Orange;
             _geometrySelectMode = GeometrySelectModeEnum.SelectLocation;

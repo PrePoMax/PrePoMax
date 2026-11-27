@@ -31,7 +31,7 @@ namespace vtkn
     // The colors vtkControl formats the selection layer with
     struct HighlightColors
     {
-        double Primary[3] = { 1, 0, 0 };
+        double Primary[3] = { 30 / 255.0, 144 / 255.0, 1 };
         double Secondary[3] = { 1, 0, 0 };
     };
 

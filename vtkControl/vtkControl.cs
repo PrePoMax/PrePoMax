@@ -399,7 +399,7 @@ namespace vtkControl
             _measurementArrowSymbolSizes = new Dictionary<string, double>();
             _animationFrameData = null;
             _currentAnimationFrameNumber = -1;
-            _primaryHighlightColor = Color.Red;
+            _primaryHighlightColor = Color.DodgerBlue;
             _secondaryHighlightColor = Color.Violet;
             _drawSymbolEdges = true;
             //

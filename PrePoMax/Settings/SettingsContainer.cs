@@ -305,6 +305,7 @@ namespace PrePoMax
                 Dictionary<string, ISettings> items = Tools.LoadDumpFromFile<Dictionary<string, ISettings>>(fileName);
                 FromDictionary(items);
             }
+            _pre.UpgradeHighlightColors();
         }
         //
         public void SetRegenerationWorkDirectory(string workDirectory)

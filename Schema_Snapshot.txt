@@ -4756,6 +4756,7 @@ F 10541.11 System.Int32 _nodeSymbolSize
 F 10541.12 System.Boolean _drawSymbolEdges
 F 10541.13 #10532 _colorBarBackgroundType
 F 10541.14 System.Boolean _colorBarDrawBorder
+F 10541.15 System.Int32 _highlightColorsRevision
 T 10542 class PrePoMax.SettingsContainer
 F 10542.0 #10529 _general
 F 10542.1 #10539 _numberFormat

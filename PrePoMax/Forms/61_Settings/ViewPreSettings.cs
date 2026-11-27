@@ -39,7 +39,7 @@ namespace PrePoMax.Settings
         //
         [CategoryAttribute("Selection")]
         [OrderedDisplayName(1, 10, "Primary highlight color")]
-        [DescriptionAttribute("Select the primary highlight color.")]
+        [DescriptionAttribute("Select the color of the selected items in all views.")]
         public Color PrimaryHighlightColor
         {
             get { return _preSettings.PrimaryHighlightColor; }
