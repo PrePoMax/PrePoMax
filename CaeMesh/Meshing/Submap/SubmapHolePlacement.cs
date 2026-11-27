@@ -18,12 +18,13 @@ namespace CaeMesh
     /// Places the holes of a submapped face in its lattice once the numbers of elements of all its edges are known, the
     /// same way in the detection and in the meshers. The offsets of the holes are not unknowns of the interval
     /// problem: the counts only make room for them (SubmapFace.GetRoomRows), and a hole is then put where it lies.
-    /// The target of a hole is the lattice position of its centre, the mean of its boundary nodes, in the grid of the
-    /// outer loop alone (SubmapMapping.Map, with straight lattice lines where they give a good grid), in the 2D
-    /// coordinates of the nodes, the parameters of a mesher or the plane of the detection: the cell of that grid the
-    /// centre lies in and its place in the cell, by the inverse of the bilinear map of the cell. So the hole lies
-    /// between the lattice lines that pass it, also where they are not evenly spaced. The hole is offset so that
-    /// the centre of its lattice bounding box lies nearest to the target, and then, offset by offset in the order of
+    /// Every node of a hole has a lattice position in the grid of the outer loop alone (SubmapMapping.Map, with
+    /// straight lattice lines where they give a good grid), in the 2D coordinates of the nodes, the parameters of a
+    /// mesher or the plane of the detection: the cell of that grid the node lies in and its place in the cell, by the
+    /// inverse of the bilinear map of the cell. The target of the hole is the mean, over its nodes, of the offset
+    /// that would put the node where it lies. So the hole lies between the lattice lines that pass it, also where
+    /// they are not evenly spaced, whatever its shape, and exactly where they pass through its nodes. The hole is
+    /// offset as is nearest to the target, and then, offset by offset in the order of
     /// their distances from the target, ties by i and then by j, until the loops of the face are valid
     /// (SubmapMapping.AreCountsValid) and the hole keeps at least the bound of cells from the outer outline and from
     /// the holes placed before it. The holes are placed one after another in loop order.
@@ -92,35 +93,24 @@ namespace CaeMesh
             //
             for (int h = 1; h < numOfLoops; h++)
             {
-                double[] centre = new double[2];
-                foreach (var point in loopNodePoints[h])
+                double targetI = 0;
+                double targetJ = 0;
+                bool located = true;
+                for (int p = 0; p < loopI[h].Length && located; p++)
                 {
-                    centre[0] += point[0];
-                    centre[1] += point[1];
+                    double[] position = GetLatticePosition(outerGrid, outerPoints, loopNodePoints[h][p]);
+                    located = position != null;
+                    if (!located) break;
+                    targetI += (position[0] - loopI[h][p]) / loopI[h].Length;
+                    targetJ += (position[1] - loopJ[h][p]) / loopI[h].Length;
                 }
-                centre[0] /= loopNodePoints[h].Length;
-                centre[1] /= loopNodePoints[h].Length;
-                double[] target = GetLatticePosition(outerGrid, outerPoints, centre);
-                if (target == null)
+                if (!located)
                 {
                     reason = "The hole starting at Edge " + firstEdges[h] + " lies in no cell of the grid of the " +
                              "outer loop.";
                     holeOffsets = null;
                     return false;
                 }
-                int minI = int.MaxValue;
-                int maxI = int.MinValue;
-                int minJ = int.MaxValue;
-                int maxJ = int.MinValue;
-                for (int p = 0; p < loopI[h].Length; p++)
-                {
-                    minI = Math.Min(minI, loopI[h][p]);
-                    maxI = Math.Max(maxI, loopI[h][p]);
-                    minJ = Math.Min(minJ, loopJ[h][p]);
-                    maxJ = Math.Max(maxJ, loopJ[h][p]);
-                }
-                double targetI = target[0] - 0.5 * (minI + maxI);
-                double targetJ = target[1] - 0.5 * (minJ + maxJ);
                 //
                 int[][] placedDirections = new int[h + 1][];
                 int[][] placedCounts = new int[h + 1][];
@@ -184,7 +174,8 @@ namespace CaeMesh
         }
         /// <summary>
         /// The lattice coordinates of the point from the first node of the grid: those of the cell whose bilinear map
-        /// puts the point nearest to its middle, and the place of the point in it. Null when no cell gives a place.
+        /// puts the point nearest to its middle, among the cells no farther from the point than they are large, and
+        /// the place of the point in it. Null when no cell gives a place.
         /// </summary>
         private static double[] GetLatticePosition(SubmapGrid grid, double[][] points, double[] point)
         {
@@ -197,6 +188,13 @@ namespace CaeMesh
                 double[] b = points[quad[1]];
                 double[] c = points[quad[2]];
                 double[] d = points[quad[3]];
+                double minX = Math.Min(Math.Min(a[0], b[0]), Math.Min(c[0], d[0]));
+                double maxX = Math.Max(Math.Max(a[0], b[0]), Math.Max(c[0], d[0]));
+                double minY = Math.Min(Math.Min(a[1], b[1]), Math.Min(c[1], d[1]));
+                double maxY = Math.Max(Math.Max(a[1], b[1]), Math.Max(c[1], d[1]));
+                double margin = Math.Max(maxX - minX, maxY - minY);
+                if (point[0] < minX - margin || point[0] > maxX + margin || point[1] < minY - margin ||
+                    point[1] > maxY + margin) continue;
                 double s = 0.5;
                 double t = 0.5;
                 for (int iteration = 0; iteration < MaxCellIterations; iteration++)
