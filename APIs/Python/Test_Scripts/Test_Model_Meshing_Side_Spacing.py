@@ -543,8 +543,9 @@ def check_refused_patches():
         elements = face_elements(part, grid, face_id)
         check(any("Surface %d " % face_id in line and "is meshed free" in line for line in output),
               "the refused submap did not fall back to a free face")
-        expected_quads = 550 if face_id == 9 else 548
-        check(len(elements) == expected_quads and grid.node_counts == {4}, "the refused submap lost its free quads")
+        expected_quads = 549 if face_id == 9 else 547
+        check(len(elements) == expected_quads and grid.node_counts == {4},
+              "the refused submap lost its free quads: " + str(len(elements)))
         check(boundary_fingerprint(grid, elements) == expected, "the refused submap kept its matched boundary")
     wall = face_elements(part, grid, 3)
     check(len(wall) == 132 and grid.worst_corner(wall) > 1 - EPS, "the adjoining wall lost its right-angled grid")

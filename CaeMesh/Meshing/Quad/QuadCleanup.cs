@@ -20,6 +20,9 @@ namespace CaeMesh
     /// node on the boundary of the face is fixed and is never moved, removed or joined to another one, and no boundary
     /// edge changes. A node is added only where two triangles cannot be paired otherwise (see below). A boundary node
     /// where the boundary turns back on itself, as at the end of a cut, has a corner of 360 degrees.
+    /// 0. A quad with two edges on the boundary at a node where the boundary runs on, which a recombination makes of
+    /// two triangles on the boundary and which has a corner of nearly 180 degrees there, is split into those two
+    /// triangles again (SplitFlatBoundaryQuads), so that the pairs give each of them another partner.
     /// 1. The triangles are paired and every pair becomes a quad. With an even number of boundary segments the number
     /// of triangles is even; with an odd one, one triangle is left. A triangle finds the nearest other triangle by a
     /// breadth-first walk through the quads, across their edges, and one of the two is carried along that path: the
@@ -239,7 +242,8 @@ namespace CaeMesh
             double minScaledJacobianBefore = GetMinScaledJacobian(GetElements());
             int numOfIrregularBefore = CountIrregularNodes();
             //
-            if (numOfTrianglesBefore > 1)
+            SplitFlatBoundaryQuads();
+            if (CountTriangles() > 1)
             {
                 // The pairs that keep their regions good first, then those down to the floor
                 foreach (var acceptance in new double[] { GoodQuality, _floor })
@@ -277,6 +281,36 @@ namespace CaeMesh
         private static long GetEdgeKey(int a, int b)
         {
             return a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
+        }
+        /// <summary>
+        /// Splits every quad with two edges on the boundary at a node where the boundary asks for two quads or more
+        /// and the corner of the quad is below GoodQuality, into the two triangles that meet at that node: the quad is
+        /// two triangles on the boundary joined across the edge that should end there, and the pairs give each of them
+        /// another partner.
+        /// </summary>
+        private void SplitFlatBoundaryQuads()
+        {
+            int numOfElements = _elements.Count;
+            for (int id = 0; id < numOfElements; id++)
+            {
+                int[] quad = _elements[id];
+                if (quad == null || quad.Length != 4) continue;
+                for (int c = 0; c < 4; c++)
+                {
+                    int node = quad[c];
+                    int next = quad[(c + 1) % 4];
+                    int opposite = quad[(c + 2) % 4];
+                    int previous = quad[(c + 3) % 4];
+                    if (!_boundary[node] || _idealValence[node] < 3 || GetNeighbour(id, node, next) >= 0 ||
+                        GetNeighbour(id, previous, node) >= 0 || GetCornerQuality(quad, c) >= GoodQuality) continue;
+                    Begin();
+                    RemoveElement(id);
+                    AddElement(new int[] { node, next, opposite });
+                    AddElement(new int[] { node, opposite, previous });
+                    Commit(new List<int>() { node, next, opposite, previous });
+                    break;
+                }
+            }
         }
         /// <summary>
         /// Adds a free inner node at the given position, the arrays of the nodes grown when they are full; the node is

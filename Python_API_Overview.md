@@ -1298,6 +1298,8 @@ valences evened out and its nodes smoothed; a pair the merging leaves has its re
 again with quads only or the path between its triangles split along its length, which adds nodes inside the face;
 such a result is kept only when it does not narrow the elements below an aspect of about 10:1 or below what gmsh's mesh
 had, so a narrow face may keep a pair of triangles rather than stretched quads.
+A quad that gmsh made of two triangles on the boundary, with two of its edges on a boundary that runs on and so a
+corner of nearly 180 degrees, is taken apart into those triangles first and they are paired with others.
 Only an even number of elements around a face allows quads only, so the edges of the free faces are balanced to an
 even total around each face where no number set on an edge or structured face holds them, giving way to everything
 else; the balance measures the edges as gmsh meshes them in the end. A face that still has an odd total keeps one
