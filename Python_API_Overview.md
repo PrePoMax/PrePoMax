@@ -1214,20 +1214,27 @@ concentric arcs of different lengths. A submapped face without a lens fallback c
 interior lattice lines, including those joining its outer boundary and cornered holes or connecting two cornered
 holes. Spacing pairs pass through round holes and the nodes on their rims stay fixed. When the face also has
 cornered holes, placement still includes the round holes in the same order as in the mapper.
+Once the nodes are matched, the round holes of a plane submap are placed in the lattice of the matched nodes, and
+the lattice lines that end on a round hole are moved to even places over the hole, its ring and a clearance of half
+an element of the ring, wherever the matching leaves them free. The lattice is then centred on the hole, also on a
+face whose nodes matched already; the lines beside the hole are evened out with the rest of their edge.
 The mapper places the holes from the meshed boundary, breaking near-ties in offset distance by lattice i then j.
 The outer logical outline uses edge lengths scaled to close the outline. An affine fit maps the hole corners into
 that frame. Aligned planar shell submaps without a round loop or lens fallback place interior nodes at crossings
 of perpendicular lattice lines; a line that a hole or a reentrant corner cuts may lie differently in each piece.
-Any other planar submap without a lens fallback and without a ring around a round hole places its inner nodes where
-its lattice lines cross, each the straight line between the two boundary nodes it ends on, when no quad corner of that
-grid has a scaled Jacobian below 0.5. Such a grid is not smoothed, so its lines stay straight, and at right angles
-where the boundary nodes face each other, up to a hole or a fillet; the size of the elements changes there instead.
-Where the straight lines give no such grid, and around a ring, the inner nodes are smoothed.
+Any other planar submap without a lens fallback places its inner nodes where its lattice lines cross, each the
+straight line between the two boundary nodes it ends on, when no quad corner of that grid has a scaled Jacobian
+below 0.5. Such a grid is not smoothed, so its lines stay straight, and at right angles where the boundary nodes
+face each other, up to a hole or a fillet; the size of the elements changes there instead. The lines pass through
+the ring around a round hole as if it was not there, and only the nodes at the ring are then moved to suit them:
+those on its outer side and the inner nodes within a quarter of the elements of a side of the hole, less one (a
+hole of 20 to 32 elements has 5 to 8 on a side, so one row of nodes around it, and one of 16 none). The lines bend there alone and are straight beyond.
+Where the straight lines give no such grid, with its rings, the inner nodes are smoothed.
 Lean is the arctangent of the mismatch along the sides divided by the distance between facing nodes. Below 5 degrees
 of initial largest lean, a chain keeps a match only if every face bordering a moved edge belongs to a spacing
 chain and the largest remaining lean is at most 0.1 degrees. A moved submap with only cornered loops must reach a
-worst scaled Jacobian of 0.9999. A moved submap with a round hole needs a valid grid whose worst scaled Jacobian
-drops by at most 0.02 from the original valid grid. At or above 5 degrees, the mesher restores the chain if an
+worst scaled Jacobian of 0.9999. A moved submap with a round hole needs a grid of straight lattice lines, or a
+valid grid whose worst scaled Jacobian drops by at most 0.02 from the original valid grid. At or above 5 degrees, the mesher restores the chain if an
 originally accepted submap is refused or its worst scaled Jacobian falls below 0.5 and drops by more than 0.02.
 Vertices, element counts, and nodes on submap turn edges and on the rims of round holes stay fixed. Moved nodes
 keep at least a third of the even spacing between them. The nodes of a moved edge are evened out as far as the

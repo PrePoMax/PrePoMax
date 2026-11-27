@@ -869,7 +869,7 @@ namespace CaeMesh
                     }
                     else if (recombine && !unrecombinedSurfaceIds.Contains(surfaceId))
                         Gmsh.Model.Mesh.SetRecombine(2, surfaceId);
-                }, getFreeQuality);
+                }, getFreeQuality, mirrorSplits?.SplitEdgeIds);
                 if (switchToFaceRecombination) SetShellRecombination(unrecombinedSurfaceIds);
             }
             if (meshEdgesFirst)
@@ -4155,7 +4155,8 @@ namespace CaeMesh
             HashSet<int> matchedEdgeIds = new HashSet<int>();
             GmshShellSideSpacing.MatchSweepSources(sourceFaces, submapSources, wallPatches, transfiniteSurfaceIds,
                                                    fixedSurfaceIds, followingSurfaceIds, getSurfaceArea,
-                                                   matchedEdgeIds);
+                                                   matchedEdgeIds,
+                                                   _mirrorPlanes.Count > 0 ? _mirrorPlanes[0].Splits.SplitEdgeIds : null);
             return matchedEdgeIds.Count > 0 ? matchedEdgeIds : null;
         }
         /// <summary>

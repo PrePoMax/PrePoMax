@@ -20,13 +20,20 @@ namespace CaeMesh
     /// The nodes are moved as little as makes the pairs agree and are then evened out along their edges, in the
     /// intervals the edges were meshed with, as far as the pairs let them: between two nodes that a pair holds the
     /// others keep the grading gmsh gave the edge.
+    /// The round holes of a plane submapped face are then placed in the lattice of the matched nodes, as the mesher
+    /// will place them, and the lattice lines that end on a round hole are aimed at it
+    /// (GmshShellSubmapSpacing), with a small weight beside the pairs, which are put right alone at the end: the
+    /// lattice is centred on the hole wherever the pairs let it, also in a chain that was matched already.
     /// A chain below MinLeanDegrees moves no edge beside a face outside the chains and must reach StraightLeanDegrees.
-    /// A moved submap must reach RightAngleQuality, or keep a valid grid within QualityTolerance of the original
-    /// quality if it has a round hole. Larger leans allow free faces to share moved edges.
+    /// A moved submap must reach RightAngleQuality, or with a round hole have a grid of straight lattice lines or
+    /// keep a valid grid within QualityTolerance of the original quality. Larger leans allow free faces to share
+    /// moved edges.
     /// A patch refused on both boundaries leaves the chain. If an isolated free mesh gets worse and falls below the
     /// quality threshold, its edges stay fixed and the chain is matched again. The caller selects which free faces
     /// can be trialled. Full-quad and quasi-structured algorithms, periodic surfaces and optimized shells are excluded.
     /// The structured sources of a sweep are matched the same way, with the walls of the sweep in their chains.
+    /// The edges given as fixed, as those with a node at the image of a vertex across a mirror plane, keep their
+    /// nodes.
     /// </summary>
     internal static class GmshShellSideSpacing
     {
@@ -43,16 +50,18 @@ namespace CaeMesh
         private const int MaxRelaxationSteps = 512;
         private const int MaxEveningSteps = 2000;
         private const double EveningTolerance = 1E-7;
+        private const double TargetWeight = 0.01;
 
 
         // Methods                                                                                                      
         public static bool Match(IEnumerable<TransfiniteFace> shellFaces, IEnumerable<SubmapFace> submapFaces,
                                  HashSet<int> transfiniteSurfaceIds, HashSet<int> fixedSurfaceIds,
                                  Func<int, double> getSurfaceArea, Action meshEdges, bool recombine,
-                                 Action<GmshShellGridQuality> tryFree, Func<int, double?> getFreeQuality)
+                                 Action<GmshShellGridQuality> tryFree, Func<int, double?> getFreeQuality,
+                                 IEnumerable<int> fixedEdgeIds)
         {
             return Match(shellFaces, submapFaces, null, transfiniteSurfaceIds, fixedSurfaceIds, null, getSurfaceArea,
-                         meshEdges, recombine, tryFree, getFreeQuality, null);
+                         meshEdges, recombine, tryFree, getFreeQuality, null, fixedEdgeIds);
         }
         /// <summary>
         /// The four-sided and submapped sources of a sweep, whose edges are meshed, with its walls. A wall carries the
@@ -65,17 +74,17 @@ namespace CaeMesh
                                              IEnumerable<GmshShellSpacingPatch> wallPatches,
                                              HashSet<int> transfiniteSurfaceIds, HashSet<int> fixedSurfaceIds,
                                              HashSet<int> followingSurfaceIds, Func<int, double> getSurfaceArea,
-                                             HashSet<int> matchedEdgeIds)
+                                             HashSet<int> matchedEdgeIds, IEnumerable<int> fixedEdgeIds)
         {
             return Match(sourceFaces, submapSources, wallPatches, transfiniteSurfaceIds, fixedSurfaceIds,
-                         followingSurfaceIds, getSurfaceArea, null, false, null, null, matchedEdgeIds);
+                         followingSurfaceIds, getSurfaceArea, null, false, null, null, matchedEdgeIds, fixedEdgeIds);
         }
         private static bool Match(IEnumerable<TransfiniteFace> shellFaces, IEnumerable<SubmapFace> submapFaces,
                                   IEnumerable<GmshShellSpacingPatch> wallPatches, HashSet<int> transfiniteSurfaceIds,
                                   HashSet<int> fixedSurfaceIds, HashSet<int> followingSurfaceIds,
                                   Func<int, double> getSurfaceArea, Action meshEdges, bool recombine,
                                   Action<GmshShellGridQuality> tryFree, Func<int, double?> getFreeQuality,
-                                  HashSet<int> matchedEdgeIds)
+                                  HashSet<int> matchedEdgeIds, IEnumerable<int> fixedEdgeIds)
         {
             List<GmshShellSpacingPatch> patches = new List<GmshShellSpacingPatch>();
             foreach (TransfiniteFace face in shellFaces.OrderBy(face => face.FaceId))
@@ -86,6 +95,7 @@ namespace CaeMesh
                 patches.Add(new GmshShellSpacingPatch(face, 1));
             }
             HashSet<int> roundEdges = new HashSet<int>();
+            if (fixedEdgeIds != null) roundEdges.UnionWith(fixedEdgeIds);
             foreach (SubmapFace face in submapFaces.OrderBy(face => face.FaceId))
             {
                 foreach (SubmapFace loop in face.Loops)
@@ -200,12 +210,12 @@ namespace CaeMesh
             while (chain.Count > 0)
             {
                 double lean = GetMaximumLean(chain);
-                if (lean == 0) return false;
+                if (lean == 0 && !chain.Any(patch => patch.Submap != null && HasRoundHole(patch.Submap))) return false;
                 bool exact = lean < MinLeanDegrees;
                 int[] edgeIds = chain.SelectMany(patch => patch.EdgeIds).Distinct().OrderBy(id => id).ToArray();
                 foreach (int edgeId in edgeIds) configureEdge(edgeId, exact, protectedFaces);
                 GmshShellSpacingEdge[] chainEdges = edgeIds.Select(id => edges[id]).ToArray();
-                if (!ProposeSpacing(chain, chainEdges, exact)) return false;
+                if (!ProposeSpacing(chain, chainEdges, edges, exact)) return false;
                 //
                 Dictionary<SubmapFace, double> gridsToCheck = GetGridsToCheck(chain, edges, exact);
                 if (gridsToCheck.Count > 0)
@@ -248,31 +258,41 @@ namespace CaeMesh
             return false;
         }
         private static bool ProposeSpacing(List<GmshShellSpacingPatch> chain, GmshShellSpacingEdge[] chainEdges,
-                                           bool exact)
+                                           Dictionary<int, GmshShellSpacingEdge> edges, bool exact)
         {
             HashSet<GmshShellSpacingEdge> known = new HashSet<GmshShellSpacingEdge>();
             foreach (GmshShellSpacingPatch patch in chain) patch.MarkSplitEdges(known);
             foreach (GmshShellSpacingPatch patch in chain) patch.CopyKnownSpacing(known);
+            // The nodes are first matched through the round holes, which gives the lattice of every face; a round
+            // hole is then placed in that lattice, as the mesher will place it, and the lines that end on it are
+            // aimed at it
+            foreach (GmshShellSpacingPatch patch in chain) patch.ReleaseRoundHoles();
+            RelaxAndEven(chain, chainEdges);
+            foreach (GmshShellSpacingEdge edge in chainEdges) edge.PrepareNodes(FractionTolerance);
+            foreach (GmshShellSpacingEdge edge in chainEdges) edge.ApplyNodes();
+            bool placed = false;
+            foreach (GmshShellSpacingPatch patch in chain) placed |= patch.PlaceRoundHoles(edges);
+            foreach (GmshShellSpacingEdge edge in chainEdges) edge.RestoreNodes();
+            if (placed) RelaxAndEven(chain, chainEdges);
+            if (exact && GetMaximumLean(chain) > StraightLeanDegrees)
+            {
+                foreach (GmshShellSpacingEdge edge in chainEdges) edge.ResetNodes();
+                return false;
+            }
+            //
+            foreach (GmshShellSpacingEdge edge in chainEdges) edge.PrepareNodes(FractionTolerance);
+            if (!chainEdges.Any(edge => edge.HasProposedNodes)) return false;
+            foreach (GmshShellSpacingEdge edge in chainEdges) edge.ApplyNodes();
+            return true;
+        }
+        private static void RelaxAndEven(List<GmshShellSpacingPatch> chain, GmshShellSpacingEdge[] chainEdges)
+        {
             // The nodes are moved until the pairs agree, which moves them as little as that takes, and then evened out
             // along their edges, a step at a time with the pairs put right again after each, until they settle
             double[][] fractions = new double[chainEdges.Length][];
             for (int evening = 0; evening <= MaxEveningSteps; evening++)
             {
-                for (int step = 0; step < MaxRelaxationSteps; step++)
-                {
-                    foreach (GmshShellSpacingPatch patch in chain)
-                    {
-                        foreach (var pair in patch.Pairs)
-                        {
-                            double error = pair.Second.Coordinate - pair.First.Coordinate;
-                            pair.First.AddError(error);
-                            pair.Second.AddError(-error);
-                        }
-                    }
-                    double change = 0;
-                    foreach (GmshShellSpacingEdge edge in chainEdges) change = Math.Max(change, edge.Relax());
-                    if (change <= RelaxationTolerance) break;
-                }
+                Relax(chain, chainEdges, true);
                 double evened = 0;
                 for (int e = 0; e < chainEdges.Length; e++)
                 {
@@ -290,16 +310,30 @@ namespace CaeMesh
                 if (evened <= EveningTolerance || evening == MaxEveningSteps) break;
                 foreach (GmshShellSpacingEdge edge in chainEdges) edge.Even();
             }
-            if (exact && GetMaximumLean(chain) > StraightLeanDegrees)
+            // A target a paired node cannot follow leaves the pair a little apart
+            if (chain.Any(patch => patch.Targets != null)) Relax(chain, chainEdges, false);
+        }
+        private static void Relax(List<GmshShellSpacingPatch> chain, GmshShellSpacingEdge[] chainEdges,
+                                  bool withTargets)
+        {
+            for (int step = 0; step < MaxRelaxationSteps; step++)
             {
-                foreach (GmshShellSpacingEdge edge in chainEdges) edge.ResetNodes();
-                return false;
+                foreach (GmshShellSpacingPatch patch in chain)
+                {
+                    foreach (var pair in patch.Pairs)
+                    {
+                        double error = pair.Second.Coordinate - pair.First.Coordinate;
+                        pair.First.AddError(error);
+                        pair.Second.AddError(-error);
+                    }
+                    if (!withTargets || patch.Targets == null) continue;
+                    foreach (var target in patch.Targets)
+                        target.Node.AddError(target.Target - target.Node.Coordinate, TargetWeight);
+                }
+                double change = 0;
+                foreach (GmshShellSpacingEdge edge in chainEdges) change = Math.Max(change, edge.Relax());
+                if (change <= RelaxationTolerance) break;
             }
-            //
-            foreach (GmshShellSpacingEdge edge in chainEdges) edge.PrepareNodes(FractionTolerance);
-            if (!chainEdges.Any(edge => edge.HasProposedNodes)) return false;
-            foreach (GmshShellSpacingEdge edge in chainEdges) edge.ApplyNodes();
-            return true;
         }
         private static bool HasRoundHole(SubmapFace face)
         {
@@ -313,9 +347,9 @@ namespace CaeMesh
             foreach (GmshShellSpacingPatch patch in chain)
             {
                 if (patch.Submap == null || !patch.EdgeIds.Any(id => edges[id].HasProposedNodes)) continue;
-                if (!GmshSubmapMesher.Evaluate(patch.Submap, out double quality, out _, true))
+                if (!GmshSubmapMesher.Evaluate(patch.Submap, out double quality, out _, true, out bool straight))
                     gridsToCheck.Add(patch.Submap, double.NegativeInfinity);
-                else if (exact ? HasRoundHole(patch.Submap) || quality < RightAngleQuality :
+                else if (exact ? (HasRoundHole(patch.Submap) ? !straight : quality < RightAngleQuality) :
                                  quality < GmshShellGridQuality.MinScaledJacobian)
                     gridsToCheck.Add(patch.Submap, quality);
             }

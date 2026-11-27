@@ -37,9 +37,9 @@ namespace CaeMesh
 
 
         // Methods                                                                                                      
-        public void AddError(double error)
+        public void AddError(double error, double weight = 1)
         {
-            _edge.AddError(_index, _scale, error);
+            _edge.AddError(_index, _scale, error, weight);
         }
     }
 }

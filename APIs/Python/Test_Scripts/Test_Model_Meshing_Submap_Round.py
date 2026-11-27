@@ -679,7 +679,7 @@ def main():
     connectivity = sorted(tuple(sorted(tuple(face.xyz[n]) for n in e)) for e in face.elements)
     fingerprint = hashlib.sha256(repr((nodes, connectivity)).encode("ascii")).hexdigest()
     print("round hole: fingerprint", fingerprint)
-    check(fingerprint == "bece166102981bd33e05ff44e8072e5eb4c055a594344b3c6a1d01df89edb4e1",
+    check(fingerprint == "74c320a2fd155df70df45b4c521bf16b76bfe8ad3dcf8aba70b7eafe81ba1aaf",
           "the submapped plate with a round hole changed from its baseline mesh")
     check_turned(parts, faces)
     check_coarse_border(parts["coarse border"], faces["coarse border"])

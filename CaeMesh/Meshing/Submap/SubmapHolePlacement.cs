@@ -10,6 +10,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CaeGlobals;
 
 namespace CaeMesh
 {
@@ -17,10 +18,11 @@ namespace CaeMesh
     /// Places the holes of a submapped face in its lattice once the numbers of elements of all its edges are known, the
     /// same way in the detection and in the meshers. The offsets of the holes are not unknowns of the interval
     /// problem: the counts only make room for them (SubmapFace.GetRoomRows), and a hole is then put where it lies.
-    /// The target of a hole is the lattice position of its centre, the mean of its boundary nodes: the mean value
-    /// coordinates interpolation, at the centre, of the lattice coordinates of the boundary nodes of the outer loop,
-    /// in the 2D coordinates of the nodes, the parameters of a mesher or the plane of the detection. Mean value
-    /// coordinates reproduce a linear map and are defined for a polygon that is not convex. The hole is offset so that
+    /// The target of a hole is the lattice position of its centre, the mean of its boundary nodes, in the grid of the
+    /// outer loop alone (SubmapMapping.Map, with straight lattice lines where they give a good grid), in the 2D
+    /// coordinates of the nodes, the parameters of a mesher or the plane of the detection: the cell of that grid the
+    /// centre lies in and its place in the cell, by the inverse of the bilinear map of the cell. So the hole lies
+    /// between the lattice lines that pass it, also where they are not evenly spaced. The hole is offset so that
     /// the centre of its lattice bounding box lies nearest to the target, and then, offset by offset in the order of
     /// their distances from the target, ties by i and then by j, until the loops of the face are valid
     /// (SubmapMapping.AreCountsValid) and the hole keeps at least the bound of cells from the outer outline and from
@@ -39,6 +41,7 @@ namespace CaeMesh
         public const int MaxSearchRadius = 12;
         private const double OffsetTieTolerance = 1E-9;
         private const double AngleTieTolerance = 1E-9;
+        private const int MaxCellIterations = 8;
         private static readonly int[] DirectionI = new int[] { 1, 0, -1, 0 };
         private static readonly int[] DirectionJ = new int[] { 0, 1, 0, -1 };
 
@@ -74,8 +77,18 @@ namespace CaeMesh
                     return false;
                 }
             }
-            double[][] outerValues = new double[loopI[0].Length][];
-            for (int p = 0; p < outerValues.Length; p++) outerValues[p] = new double[] { loopI[0][p], loopJ[0][p] };
+            double[][] outerPoints;
+            SubmapGrid outerGrid;
+            try
+            {
+                outerGrid = MapOuterLoop(loopDirections[0], loopCounts[0], loopNodePoints[0], out outerPoints);
+            }
+            catch (CaeException ex)
+            {
+                reason = ex.Message;
+                holeOffsets = null;
+                return false;
+            }
             //
             for (int h = 1; h < numOfLoops; h++)
             {
@@ -87,7 +100,14 @@ namespace CaeMesh
                 }
                 centre[0] /= loopNodePoints[h].Length;
                 centre[1] /= loopNodePoints[h].Length;
-                double[] target = InterpolateMeanValue(loopNodePoints[0], outerValues, centre);
+                double[] target = GetLatticePosition(outerGrid, outerPoints, centre);
+                if (target == null)
+                {
+                    reason = "The hole starting at Edge " + firstEdges[h] + " lies in no cell of the grid of the " +
+                             "outer loop.";
+                    holeOffsets = null;
+                    return false;
+                }
                 int minI = int.MaxValue;
                 int maxI = int.MinValue;
                 int minJ = int.MaxValue;
@@ -133,6 +153,73 @@ namespace CaeMesh
                 holeOffsets[h - 1] = offset;
             }
             return true;
+        }
+        /// <summary>
+        /// The grid of the outer loop alone on its nodes, one per element in loop order, and the 2D coordinates of all
+        /// its nodes, the nodes of the loop first.
+        /// </summary>
+        private static SubmapGrid MapOuterLoop(int[] directions, int[] counts, double[][] nodePoints,
+                                               out double[][] points)
+        {
+            int numOfNodes = nodePoints.Length;
+            double[][][] edgeUv = new double[directions.Length][][];
+            double[][][] edgeXyz = new double[directions.Length][][];
+            int first = 0;
+            for (int k = 0; k < directions.Length; k++)
+            {
+                edgeUv[k] = new double[counts[k] + 1][];
+                edgeXyz[k] = new double[counts[k] + 1][];
+                for (int s = 0; s <= counts[k]; s++)
+                {
+                    double[] point = nodePoints[(first + s) % numOfNodes];
+                    edgeUv[k][s] = point;
+                    edgeXyz[k][s] = new double[] { point[0], point[1], 0 };
+                }
+                first += counts[k];
+            }
+            SubmapGrid grid = SubmapMapping.Map(new int[][] { directions }, new double[][][][] { edgeUv },
+                                                new double[][][][] { edgeXyz }, new int[0][], null, false, true, null);
+            points = nodePoints.Concat(grid.InnerUv).ToArray();
+            return grid;
+        }
+        /// <summary>
+        /// The lattice coordinates of the point from the first node of the grid: those of the cell whose bilinear map
+        /// puts the point nearest to its middle, and the place of the point in it. Null when no cell gives a place.
+        /// </summary>
+        private static double[] GetLatticePosition(SubmapGrid grid, double[][] points, double[] point)
+        {
+            int[][] logical = grid.LogicalCoordinates;
+            double[] position = null;
+            double least = double.PositiveInfinity;
+            foreach (var quad in grid.Quads)
+            {
+                double[] a = points[quad[0]];
+                double[] b = points[quad[1]];
+                double[] c = points[quad[2]];
+                double[] d = points[quad[3]];
+                double s = 0.5;
+                double t = 0.5;
+                for (int iteration = 0; iteration < MaxCellIterations; iteration++)
+                {
+                    double fx = (1 - s) * (1 - t) * a[0] + s * (1 - t) * b[0] + s * t * c[0] + (1 - s) * t * d[0] -
+                                point[0];
+                    double fy = (1 - s) * (1 - t) * a[1] + s * (1 - t) * b[1] + s * t * c[1] + (1 - s) * t * d[1] -
+                                point[1];
+                    double xs = (1 - t) * (b[0] - a[0]) + t * (c[0] - d[0]);
+                    double ys = (1 - t) * (b[1] - a[1]) + t * (c[1] - d[1]);
+                    double xt = (1 - s) * (d[0] - a[0]) + s * (c[0] - b[0]);
+                    double yt = (1 - s) * (d[1] - a[1]) + s * (c[1] - b[1]);
+                    double determinant = xs * yt - xt * ys;
+                    s -= (fx * yt - fy * xt) / determinant;
+                    t -= (fy * xs - fx * ys) / determinant;
+                }
+                double distance = Math.Max(Math.Abs(s - 0.5), Math.Abs(t - 0.5));
+                if (!(distance < least)) continue;
+                least = distance;
+                position = new double[] { logical[quad[0]][0] - logical[0][0] + s,
+                                          logical[quad[0]][1] - logical[0][1] + t };
+            }
+            return position;
         }
         /// <summary>
         /// Whether the holes of a face find a place with the given counts of its edges, as the balance of the counts

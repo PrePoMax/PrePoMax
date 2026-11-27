@@ -16,19 +16,27 @@ namespace CaeMesh
 {
     /// <summary>
     /// Pairs boundary nodes along a submap lattice. Cornered holes supply nodes and interrupt lines of sight.
-    /// Round holes only participate in placement when there are cornered holes; lines pass through round holes.
+    /// Lines pass through round holes. With the round holes of a plane face placed, the lattice lines that end on a
+    /// round hole get targets: the even places, without the first and the last, over the hole, the nodes its grid is
+    /// laid on (those of the circle on the outer side of its ring, or its own without a ring) and a clearance of
+    /// RoundHoleClearance of the distance between two of them. The lattice is then centred on the hole, and the
+    /// lines beside the hole, which the evening places, pass it clear.
     /// </summary>
     internal static class GmshShellSubmapSpacing
     {
         // Variables                                                                                                   
         private static readonly int[] _directionI = { 1, 0, -1, 0 };
         private static readonly int[] _directionJ = { 0, 1, 0, -1 };
+        private const double RoundHoleClearance = 0.5;
 
 
         // Methods                                                                                                     
         public static List<(GmshShellSpacingNode First, GmshShellSpacingNode Second)>
-            GetPairs(SubmapFace face, Dictionary<int, GmshShellSpacingEdge> edges)
+            GetPairs(SubmapFace face, Dictionary<int, GmshShellSpacingEdge> edges, bool withRoundHoles,
+                     out List<(GmshShellSpacingNode Node, double Target)> targets)
         {
+            targets = new List<(GmshShellSpacingNode Node, double Target)>();
+            if (withRoundHoles && GmshCommon.Gmsh.Model.GetType(2, face.FaceId) != "Plane") return null;
             SubmapFace[] loops = face.Loops;
             Dictionary<int, int> edgeCounts = new Dictionary<int, int>();
             int[][] counts = new int[loops.Length][];
@@ -60,13 +68,25 @@ namespace CaeMesh
                 if (loopNodes[l] == null || counts[l].Any(count => count <= 0)) return null;
             }
             int[][] offsets = null;
-            if (counts.Skip(1).Any(count => count != null))
+            double[][][] ringUv = new double[loops.Length][][];
+            double[][][] ringPoints = new double[loops.Length][][];
+            if (withRoundHoles ? loops.Length > 1 : counts.Skip(1).Any(count => count != null))
             {
                 double[][][] uv;
                 if (loops.Any(loop => loop.IsRound))
                 {
-                    if (!GmshSubmapMesher.TryPlaceHoles(face, out _, out _, out _, out uv, out offsets, out _))
+                    if (!GmshSubmapMesher.TryPlaceHoles(face, out _, out double[][][][] loopXyz,
+                                                        out double[][][][] loopUv, out uv, out offsets, out _))
                         return null;
+                    double[][][][] gridUv = loopUv;
+                    if (withRoundHoles)
+                        GmshSubmapMesher.GetRingLoops(face.FaceId, loops, loopXyz, loopUv, out _, out gridUv);
+                    for (int l = 1; l < loops.Length; l++)
+                    {
+                        if (!loops[l].IsRound || !withRoundHoles) continue;
+                        counts[l] = gridUv[l].Select(side => side.Length - 1).ToArray();
+                        ringUv[l] = gridUv[l].SelectMany(side => side.Take(side.Length - 1)).ToArray();
+                    }
                 }
                 else
                 {
@@ -83,16 +103,17 @@ namespace CaeMesh
                     }
                     if (!SubmapHolePlacement.TryPlace(directions, counts, uv, 1, out offsets, out _)) return null;
                 }
-                if (!MapHoleOutlines(uv, counts, outlines)) return null;
+                if (!MapHoleOutlines(uv, counts, outlines, ringUv, ringPoints)) return null;
             }
             //
             var nodes = new List<(int I, int J, GmshShellSpacingNode X, GmshShellSpacingNode Y)>();
+            var roundNodes = new List<(int I, int J, double X, double Y, int Loop)>();
             var positions = new HashSet<(int I, int J)>();
             int[][] cornerI = new int[loops.Length][];
             int[][] cornerJ = new int[loops.Length][];
             for (int l = 0; l < loops.Length; l++)
             {
-                if (loops[l].IsRound) continue;
+                if (counts[l] == null) continue;
                 int i = l == 0 ? 0 : offsets[l - 1][0];
                 int j = l == 0 ? 0 : offsets[l - 1][1];
                 int numOfSegments = counts[l].Length;
@@ -106,6 +127,15 @@ namespace CaeMesh
                     int di = _directionI[directions[l][k]];
                     int dj = _directionJ[directions[l][k]];
                     int count = counts[l][k];
+                    if (loops[l].IsRound)
+                    {
+                        for (int n = 0; n < count; n++, firstNode++, i += di, j += dj)
+                        {
+                            if (!positions.Add((i, j))) return null;
+                            roundNodes.Add((i, j, ringPoints[l][firstNode][0], ringPoints[l][firstNode][1], l));
+                        }
+                        continue;
+                    }
                     var start = loopNodes[l][firstNode];
                     double from = start.Edge.GetFraction(start.Index);
                     double span = start.Edge.GetFraction(start.Index + start.Step * count) - from;
@@ -125,6 +155,9 @@ namespace CaeMesh
                 cornerI[l][numOfSegments] = i;
                 cornerJ[l][numOfSegments] = j;
                 if (i != cornerI[l][0] || j != cornerJ[l][0]) return null;
+                if (!loops[l].IsRound) continue;
+                cornerI[l] = null;
+                cornerJ[l] = null;
             }
             //
             var pairs = new List<(GmshShellSpacingNode First, GmshShellSpacingNode Second)>();
@@ -148,7 +181,48 @@ namespace CaeMesh
                         pairs.Add((ordered[n - 1].X, ordered[n].X));
                 }
             }
+            // The lattice lines that end on a round hole aim at even places over the hole, the nodes its grid is laid
+            // on and a clearance around them
+            for (int l = 1; l < loops.Length; l++)
+            {
+                var round = roundNodes.Where(node => node.Loop == l).ToArray();
+                if (round.Length == 0) continue;
+                double x = round.Average(node => node.X);
+                double y = round.Average(node => node.Y);
+                double half = 0;
+                for (int n = 0; n < round.Length; n++)
+                {
+                    var next = round[(n + 1) % round.Length];
+                    half += (Math.Sqrt(Math.Pow(round[n].X - x, 2) + Math.Pow(round[n].Y - y, 2)) +
+                             RoundHoleClearance * Math.Sqrt(Math.Pow(next.X - round[n].X, 2) +
+                                                            Math.Pow(next.Y - round[n].Y, 2))) / round.Length;
+                }
+                int minI = round.Min(node => node.I);
+                int maxI = round.Max(node => node.I);
+                int minJ = round.Min(node => node.J);
+                int maxJ = round.Max(node => node.J);
+                for (int i = minI; i <= maxI; i++)
+                    AddTargets(targets, nodes.Where(node => node.I == i).Select(node => (node.J, node.X)), minJ, maxJ,
+                               x + half * (2.0 * (i - minI + 1) / (maxI - minI + 2) - 1));
+                for (int j = minJ; j <= maxJ; j++)
+                    AddTargets(targets, nodes.Where(node => node.J == j).Select(node => (node.I, node.Y)), minI, maxI,
+                               y + half * (2.0 * (j - minJ + 1) / (maxJ - minJ + 2) - 1));
+            }
             return pairs;
+        }
+        /// <summary>
+        /// Aims the nodes of one lattice line that lie along a round hole, from the last node before the hole to the
+        /// first after it.
+        /// </summary>
+        private static void AddTargets(List<(GmshShellSpacingNode Node, double Target)> targets,
+                                       IEnumerable<(int Along, GmshShellSpacingNode Node)> line, int from, int to,
+                                       double target)
+        {
+            var ordered = line.OrderBy(node => node.Along).ToArray();
+            int first = Array.FindLastIndex(ordered, node => node.Along <= from);
+            int last = Array.FindIndex(ordered, node => node.Along >= to);
+            if (first < 0 || last < 0) return;
+            for (int n = first; n <= last; n++) targets.Add((ordered[n].Node, target));
         }
         private static (GmshShellSpacingEdge Edge, int Index, int Step)[]
             ReadLoop(SubmapFace loop, Dictionary<int, GmshShellSpacingEdge> edges, int count)
@@ -168,7 +242,8 @@ namespace CaeMesh
             }
             return nodes;
         }
-        private static bool MapHoleOutlines(double[][][] uv, int[][] counts, double[][][] outlines)
+        private static bool MapHoleOutlines(double[][][] uv, int[][] counts, double[][][] outlines, double[][][] ringUv,
+                                            double[][][] ringPoints)
         {
             double[][] outer = outlines[0];
             int count = outer.Length;
@@ -223,6 +298,14 @@ namespace CaeMesh
                     double u = uv[l][n][0] - u0;
                     double v = uv[l][n][1] - v0;
                     outlines[l][k] = new double[] { x0 + xu * u + xv * v, y0 + yu * u + yv * v };
+                }
+                if (ringUv[l] == null) continue;
+                ringPoints[l] = new double[ringUv[l].Length][];
+                for (int n = 0; n < ringUv[l].Length; n++)
+                {
+                    double u = ringUv[l][n][0] - u0;
+                    double v = ringUv[l][n][1] - v0;
+                    ringPoints[l][n] = new double[] { x0 + xu * u + xv * v, y0 + yu * u + yv * v };
                 }
             }
             return true;

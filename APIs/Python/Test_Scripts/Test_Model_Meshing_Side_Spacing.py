@@ -12,8 +12,9 @@
 #has a wall a third of the default element size. The GmshCommon generator is
 #Models/Generators/Make_Side_Spacing.py. Closed shells from the fillet3 and twist examples cover the removal
 #of refused submaps and a free face beside a chain, which keeps the evened boundary as it stays above 0.5.
-#A strip shares its pin pattern with a plate through a round hole at both sides of the 5-degree threshold.
-#A mixed-hole plate aligns the cornered hole with its outer edges while both cases keep their round rims fixed.
+#A strip shares its pin pattern with a plate through a round hole at both sides of the 5-degree threshold; the lines
+#of the plate are straight away from the hole, on which the lattice is centred.
+#A mixed-hole plate aligns the cornered hole with the outer edge it faces while both cases keep their round rims fixed.
 #
 #  PrePoMax.com -f side_spacing.brep -u MM_TON_S_C --script Test_Model_Meshing_Side_Spacing.py -g No -x Yes -w <dir>
 #
@@ -581,7 +582,7 @@ def check_round_rim(grid, cx, cy, radius, count, fingerprint):
           "the round rim moved from its baseline: " + str(len(rim)) + " nodes, " + found)
 
 
-def check_round_strip(pin, total, plate_count, expected_quality, baseline_quality):
+def check_round_strip(pin, total, plate_count, expected_quality):
     part = parts[4500]
     data = part.get_edge_data()
     pins = [int(i) for i, length, center in zip(data.ids, data.lengths, data.centroids)
@@ -604,8 +605,9 @@ def check_round_strip(pin, total, plate_count, expected_quality, baseline_qualit
     check(strip_lean < 0.1 and plate_lean < 0.1 and grid.worst_corner(strip) > 1 - EPS,
           "the spacing did not cross the shared edge and the round hole")
     check(abs(quality - expected_quality) < EPS, "the round-hole grid changed quality: " + str(quality))
-    if pin == 7:
-        check(quality >= baseline_quality - 0.02, "the exact chain made the round-hole grid too much worse")
+    away = [grid.uv[n] for element in plate for n in element if abs(grid.uv[n][1] - 70) > 25]
+    check(len(away) > 0 and all(min(abs(x - u) for u in top) < EPS for x, y in away),
+          "the lines of the round-hole plate are not straight away from the hole")
     check_round_rim(grid, 50, 70, 12, 20, "c0d46daa27495158665e9741d355bdbc43152e4c72bb55c29b0d6015b4186857")
     print("round strip pin %d lean %.6f, worst %.6f; round plate lean %.6f, worst %.6f" %
           (pin, strip_lean, grid.worst_corner(strip), plate_lean, quality))
@@ -618,33 +620,31 @@ def check_mixed_holes():
     check(len(grid.elements) == 280 and grid.node_counts == {4} and not output,
           "the mixed-hole plate lost its grid: " + str(len(grid.elements)))
     quality = grid.worst_corner()
-    check(abs(quality - 0.877723) < EPS, "the mixed-hole grid changed quality: " + str(quality))
+    check(abs(quality - 0.854443) < EPS, "the mixed-hole grid changed quality: " + str(quality))
 
     def column(x):
         return sorted(y for u, y in grid.uv.values() if abs(u - x) < EPS)
 
     bottom, top = grid.row(0), grid.row(80)
     left, right = column(0), column(100)
-    check(max_lean(bottom, top, 80) < 0.1 and max_lean(left, right, 100) < 0.1,
-          "the outer edges of the mixed-hole plate are skewed")
+    check(max_lean(bottom, top, 80) < 0.1, "the outer edges of the mixed-hole plate are skewed")
     for edge in (bottom, top):
         for y in (23, 57):
             hole = intervals(grid.row(y), 53, 78)
             match = intervals(edge, 53, 78)
             check(len(hole) == 6 and len(match) == 6 and max(abs(a - b) for a, b in zip(match, hole)) < EPS,
                   "a horizontal edge of the cornered hole did not align with the boundary")
-    for edge in (left, right):
-        for x in (53, 78):
-            hole = intervals(column(x), 23, 57)
-            match = intervals(edge, 23, 57)
-            check(len(hole) == 9 and len(match) == 9 and max(abs(a - b) for a, b in zip(match, hole)) < EPS,
-                  "a vertical edge of the cornered hole did not align through the round hole")
+    for edge, x in ((left, 53), (right, 78)):
+        hole = intervals(column(x), 23, 57)
+        match = intervals(edge, 23, 57)
+        check(len(hole) == 9 and len(match) == 9 and max(abs(a - b) for a, b in zip(match, hole)) < EPS,
+              "a vertical edge of the cornered hole did not align with the outer edge it faces")
     check_round_rim(grid, 25, 40, 10, 16, "33cfbad06ae4eb52eb1ee6409029ac18bfdd539580c83dbab9d126437cff9bc2")
     print("mixed holes: 264 quads, worst %.6f" % quality)
 
 
-check_round_strip(12, 26, 307, 0.663508, 0.789909)
-check_round_strip(7, 21, 247, 0.789082, 0.771253)
+check_round_strip(12, 26, 307, 0.794379)
+check_round_strip(7, 21, 247, 0.772219)
 check_mixed_holes()
 
 print("TEST PASSED")

@@ -14,7 +14,8 @@ namespace CaeMesh
 {
     /// <summary>
     /// The nodes of one meshed edge by their fractions of its length, for GmshShellSideSpacing. The sides the edge
-    /// belongs to add where they would have each node, and a step moves the nodes towards the weighted mean of that,
+    /// belongs to add where they would have each node, each with a weight, and a step moves the nodes towards the
+    /// weighted mean of that,
     /// kept in order and no closer than a third of the even spacing. Another step evens the nodes out among the
     /// intervals the edge was meshed with. An edge that is not movable only answers.
     /// </summary>
@@ -78,11 +79,11 @@ namespace CaeMesh
         {
             return _nodes.EvaluateShellPoint(fraction, out _);
         }
-        public void AddError(int node, double scale, double error)
+        public void AddError(int node, double scale, double error, double weight = 1)
         {
             if (!_movable || scale == 0 || node == 0 || node == _fractions.Length - 1) return;
-            _errors[node] += scale * error;
-            _weights[node] += scale * scale;
+            _errors[node] += weight * scale * error;
+            _weights[node] += weight * scale * scale;
             _hasRequests = true;
         }
         public double Relax(double step = 0.5)
@@ -172,6 +173,8 @@ namespace CaeMesh
         }
         public void PrepareNodes(double tolerance)
         {
+            _proposedPoints = null;
+            _proposedParameters = null;
             for (int k = 1; k < _fractions.Length - 1; k++)
             {
                 if (Math.Abs(_fractions[k] - _nodes.GetFraction(k)) <= tolerance)

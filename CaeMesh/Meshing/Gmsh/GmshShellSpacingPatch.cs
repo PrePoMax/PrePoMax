@@ -31,6 +31,8 @@ namespace CaeMesh
         private GmshShellSpacingSide _second;
         private double _length;
         private List<(GmshShellSpacingNode First, GmshShellSpacingNode Second)> _pairs;
+        private List<(GmshShellSpacingNode First, GmshShellSpacingNode Second)> _outerPairs;
+        private List<(GmshShellSpacingNode Node, double Target)> _targets;
 
 
         // Properties                                                                                                   
@@ -40,6 +42,10 @@ namespace CaeMesh
         public int[] EdgeIds { get { return _edgeIds; } }
         public bool IsSeed { get { return _submap != null || (_face != null && _edgeIds.Length > 2); } }
         public List<(GmshShellSpacingNode First, GmshShellSpacingNode Second)> Pairs { get { return _pairs; } }
+        /// <summary>
+        /// The nodes with a coordinate to aim at where their pairs leave them free, null without any.
+        /// </summary>
+        public List<(GmshShellSpacingNode Node, double Target)> Targets { get { return _targets; } }
 
 
         // Constructors                                                                                                 
@@ -72,7 +78,7 @@ namespace CaeMesh
         {
             if (_submap != null)
             {
-                _pairs = GmshShellSubmapSpacing.GetPairs(_submap, edges);
+                _pairs = _outerPairs = GmshShellSubmapSpacing.GetPairs(_submap, edges, false, out _);
                 return _pairs != null && _pairs.Count > 0;
             }
             if (_face != null)
@@ -108,6 +114,28 @@ namespace CaeMesh
             for (int k = 1; k < last; k++)
                 _pairs.Add((_first.GetNode(k, _length, false), _second.GetNode(last - k, _length, true)));
             return _pairs.Count > 0;
+        }
+        /// <summary>
+        /// Places the round holes of a submapped face in the lattice of its nodes as they lie now and aims the
+        /// lattice lines at them. False for a face without a round hole or one that finds no place.
+        /// </summary>
+        public bool PlaceRoundHoles(Dictionary<int, GmshShellSpacingEdge> edges)
+        {
+            if (_submap == null || !_submap.Loops.Any(loop => loop.IsRound)) return false;
+            var pairs = GmshShellSubmapSpacing.GetPairs(_submap, edges, true, out var targets);
+            if (pairs == null || pairs.Count == 0) return false;
+            _pairs = pairs;
+            _targets = targets;
+            return true;
+        }
+        /// <summary>
+        /// Leaves the nodes of a submapped face without the targets of its round holes again.
+        /// </summary>
+        public void ReleaseRoundHoles()
+        {
+            if (_outerPairs == null) return;
+            _pairs = _outerPairs;
+            _targets = null;
         }
         public bool HasMismatch(double tolerance)
         {

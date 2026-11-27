@@ -22,9 +22,12 @@ namespace CaeMesh
     /// the surface and the evaluation of the surface, and the elements gmsh meshed on the face are replaced. A grid
     /// that cannot be made, folds or has a quad corner below SubmapFaceDetector.MinScaledJacobian leaves the face as
     /// gmsh meshed it; the grid of a curved surface, its rings included, is first smoothed on the surface itself and
-    /// judged there, in space (GmshQuadSurface.SmoothGrid). On request the grid of a plane face without a ring
-    /// keeps its lattice lines straight where that gives a good grid (SubmapMapping), and at right angles where it
-    /// has no round hole and its boundary nodes lie on such lines. An edge that turns in its middle is split at its
+    /// judged there, in space (GmshQuadSurface.SmoothGrid). On request the grid of a plane face keeps its lattice
+    /// lines straight where that gives a good grid (SubmapMapping), and at right angles where it has no round hole
+    /// and its boundary nodes lie on such lines. The straight lines pass through a ring, and only the nodes at the
+    /// ring are then moved: those the ring is laid on and the inner nodes within a quarter of the elements along a
+    /// side of the square of the hole, less one, from that square. Where that leaves a quad corner below
+    /// SubmapMapping.MinStraightGridQuality the grid is smoothed as a whole instead. An edge that turns in its middle is split at its
     /// middle
     /// node into the two logical edges of the face, so it needs an even number of elements; one that turns twice at its nodes at a quarter and three quarters
     /// into three, so it needs a multiple of four. The nodes of the holes of a face are read loop by loop as those of
@@ -48,6 +51,7 @@ namespace CaeMesh
         /// elements along the hole, with which the hole is meshed with a ring.
         /// </summary>
         public const double MinRingRoom = 1.5;
+        private const int RingZoneDivisor = 4;
         private static readonly Regex LoopEdge = new Regex(@"(?<![A-Za-z])[Ee]dge(s?) (\d+)(?: and (\d+))?",
                                                            RegexOptions.Compiled);
 
@@ -106,7 +110,13 @@ namespace CaeMesh
         internal static bool Evaluate(SubmapFace face, out double minScaledJacobian, out string reason,
                                       bool keepOrthogonal)
         {
+            return Evaluate(face, out minScaledJacobian, out reason, keepOrthogonal, out _);
+        }
+        internal static bool Evaluate(SubmapFace face, out double minScaledJacobian, out string reason,
+                                      bool keepOrthogonal, out bool hasStraightLines)
+        {
             minScaledJacobian = double.NaN;
+            hasStraightLines = false;
             SubmapGrid grid;
             List<IntPtr>[][] loopTags;
             double[][][][] loopXyz;
@@ -116,6 +126,7 @@ namespace CaeMesh
             double[][] innerXyz;
             if (!Map(face, keepOrthogonal, out grid, out loopTags, out loopXyz, out loopUv, out gridQuads, out innerUv,
                      out innerXyz, out reason)) return false;
+            hasStraightLines = grid.HasStraightLines;
             // The inner nodes are keyed by negative tags, which no node of gmsh carries
             IntPtr[] nodeTags = new IntPtr[grid.NumberOfBoundaryNodes + innerUv.Length];
             Dictionary<IntPtr, double[]> tagXyz = new Dictionary<IntPtr, double[]>();
@@ -214,27 +225,37 @@ namespace CaeMesh
             double[][][][] gridXyz;
             double[][][][] gridUv;
             GetRingLoops(surfaceId, loops, loopXyz, loopUv, out gridXyz, out gridUv);
-            // The nodes a ring is laid on are moved with those of the grid, which then keeps no straight lines
-            for (int l = 0; l < loops.Length; l++) keepStraight = keepStraight && ReferenceEquals(gridUv[l], loopUv[l]);
-            try
+            // The lattice lines of a grid of straight lines pass through a ring, whose nodes are placed after them
+            bool[] ringLoops = new bool[loops.Length];
+            for (int l = 0; l < loops.Length; l++) ringLoops[l] = !ReferenceEquals(gridUv[l], loopUv[l]);
+            int numOfFoldedQuads = 0;
+            double minScaledJacobian = 0;
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                grid = SubmapMapping.Map(loopDirections, gridUv, gridXyz, holeOffsets, uv =>
+                try
                 {
-                    double[] coor;
-                    Gmsh.Model.GetValue(2, surfaceId, uv, out coor);
-                    return coor;
-                }, keepOrthogonal, keepStraight);
+                    grid = SubmapMapping.Map(loopDirections, gridUv, gridXyz, holeOffsets, uv =>
+                    {
+                        double[] coor;
+                        Gmsh.Model.GetValue(2, surfaceId, uv, out coor);
+                        return coor;
+                    }, keepOrthogonal, keepStraight, ringLoops);
+                }
+                catch (CaeException ex)
+                {
+                    reason = NameLoopEdges(face, ex.Message);
+                    return false;
+                }
+                // With a ring the grid is judged as it is meshed, its nodes moved together with those of the ring;
+                // straight lines that give no good ring are given up
+                numOfFoldedQuads = grid.NumberOfFoldedQuads;
+                minScaledJacobian = grid.MinScaledJacobian;
+                AddRings(surfaceId, grid, loopXyz, loopUv, gridXyz, gridUv, out quads, out innerUv, out innerXyz,
+                         ref numOfFoldedQuads, ref minScaledJacobian);
+                if (!grid.HasStraightLines || !ringLoops.Any(ring => ring) ||
+                    (numOfFoldedQuads == 0 && minScaledJacobian >= SubmapMapping.MinStraightGridQuality)) break;
+                keepStraight = false;
             }
-            catch (CaeException ex)
-            {
-                reason = NameLoopEdges(face, ex.Message);
-                return false;
-            }
-            // With a ring the grid is judged as it is meshed, its nodes moved together with those of the ring
-            int numOfFoldedQuads = grid.NumberOfFoldedQuads;
-            double minScaledJacobian = grid.MinScaledJacobian;
-            AddRings(surfaceId, grid, loopXyz, loopUv, gridXyz, gridUv, out quads, out innerUv, out innerXyz,
-                     ref numOfFoldedQuads, ref minScaledJacobian);
             // The grid of a curved surface, with its rings, is smoothed and judged on the surface itself; a pole of the
             // surface at a corner has no normal there
             if (curved)
@@ -299,7 +320,7 @@ namespace CaeMesh
         /// ring those of the circle a ring thickness outside it, each on the line from the centre of the hole through
         /// its node of the hole and put on the surface.
         /// </summary>
-        private static void GetRingLoops(int surfaceId, SubmapFace[] loops, double[][][][] loopXyz,
+        internal static void GetRingLoops(int surfaceId, SubmapFace[] loops, double[][][][] loopXyz,
                                          double[][][][] loopUv, out double[][][][] gridXyz,
                                          out double[][][][] gridUv)
         {
@@ -393,7 +414,9 @@ namespace CaeMesh
         /// its inner nodes, and a ring of quads, turning as the quads of the grid, joins them to the nodes of the loop.
         /// The inner nodes, those the grid was laid on among them, are then moved together by the condition energy
         /// descent SubmapMapping ends with, in the frame of the outer loop, so that the five elements at a corner of
-        /// the square of a hole share its angle. The number of folded quads and the worst scaled Jacobian of a quad
+        /// the square of a hole share its angle; in a grid of straight lattice lines (SubmapGrid.HasStraightLines)
+        /// only the nodes the grid was laid on and the inner nodes near the square of the hole are moved, so the
+        /// lines stay straight away from the hole. The number of folded quads and the worst scaled Jacobian of a quad
         /// corner are then those of all the quads in that frame; without a ring they are left as given.
         /// </summary>
         private static void AddRings(int surfaceId, SubmapGrid grid, double[][][][] loopXyz, double[][][][] loopUv,
@@ -482,17 +505,60 @@ namespace CaeMesh
             for (int n = 0; n < innerUv.Length; n++)
                 points[numOfBoundaryNodes + n] = ThreeBlockMapping.ToFrame(w, innerUv[n]);
             double orientation = ThreeBlockMapping.GetSignedArea(points, numOfOuterNodes) < 0 ? -1 : 1;
-            int[][] neighbours = ThreeBlockMapping.GetNeighbours(numOfNodes, allQuads);
+            // In a grid of straight lattice lines only the nodes at a ring move: those the grid was laid on, and the
+            // inner nodes no farther from the square of the hole than its side, less one, divided by RingZoneDivisor.
+            // They are numbered after the others for that
+            int numOfFixedNodes = numOfBoundaryNodes;
+            double[][] movedPoints = points;
+            int[][] movedQuads = quads;
+            if (grid.HasStraightLines)
+            {
+                bool[] moves = new bool[numOfNodes];
+                for (int n = numOfBoundaryNodes + grid.NumberOfInnerNodes; n < numOfNodes; n++) moves[n] = true;
+                int[][] logical = grid.LogicalCoordinates;
+                edge = 0;
+                for (int l = 0; l < loopUv.Length; l++)
+                {
+                    int minI = int.MaxValue;
+                    int maxI = int.MinValue;
+                    int minJ = int.MaxValue;
+                    int maxJ = int.MinValue;
+                    for (int k = 0; k < loopUv[l].Length; k++, edge++)
+                    {
+                        int[] corner = logical[grid.GetBoundaryNodeId(edge, 0)];
+                        minI = Math.Min(minI, corner[0]);
+                        maxI = Math.Max(maxI, corner[0]);
+                        minJ = Math.Min(minJ, corner[1]);
+                        maxJ = Math.Max(maxJ, corner[1]);
+                    }
+                    if (ReferenceEquals(loopUv[l], gridUv[l])) continue;
+                    int zone = (Math.Max(maxI - minI, maxJ - minJ) - 1) / RingZoneDivisor;
+                    for (int n = numOfBoundaryNodes; n < numOfBoundaryNodes + grid.NumberOfInnerNodes; n++)
+                        moves[n] |= logical[n][0] >= minI - zone && logical[n][0] <= maxI + zone &&
+                                    logical[n][1] >= minJ - zone && logical[n][1] <= maxJ + zone;
+                }
+                int[] order = Enumerable.Range(0, numOfNodes).OrderBy(n => moves[n]).ToArray();
+                int[] places = new int[numOfNodes];
+                movedPoints = new double[numOfNodes][];
+                for (int n = 0; n < numOfNodes; n++)
+                {
+                    places[order[n]] = n;
+                    movedPoints[n] = points[order[n]];
+                }
+                movedQuads = quads.Select(quad => quad.Select(n => places[n]).ToArray()).ToArray();
+                numOfFixedNodes = moves.Count(move => !move);
+            }
+            int[][] neighbours = ThreeBlockMapping.GetNeighbours(numOfNodes, movedQuads.ToList());
             int[] cornerStart;
             int[] cornerQuads;
             int[] cornerIndices;
-            QuadSmoothing.GetCorners(quads, numOfNodes, numOfBoundaryNodes, out cornerStart, out cornerQuads,
+            QuadSmoothing.GetCorners(movedQuads, numOfNodes, numOfFixedNodes, out cornerStart, out cornerQuads,
                                      out cornerIndices);
-            if (QuadSmoothing.CountFoldedElements(points, quads, orientation) > 0)
-                QuadSmoothing.Untangle(points, neighbours, quads, cornerStart, cornerQuads, cornerIndices,
-                                       numOfBoundaryNodes, orientation);
-            QuadSmoothing.LowerConditionEnergy(points, neighbours, quads, cornerStart, cornerQuads, cornerIndices,
-                                               numOfBoundaryNodes, orientation);
+            if (QuadSmoothing.CountFoldedElements(movedPoints, movedQuads, orientation) > 0)
+                QuadSmoothing.Untangle(movedPoints, neighbours, movedQuads, cornerStart, cornerQuads, cornerIndices,
+                                       numOfFixedNodes, orientation);
+            QuadSmoothing.LowerConditionEnergy(movedPoints, neighbours, movedQuads, cornerStart, cornerQuads,
+                                               cornerIndices, numOfFixedNodes, orientation);
             numOfFoldedQuads = QuadSmoothing.CountFoldedElements(points, quads, orientation);
             minScaledJacobian = QuadSmoothing.GetMinScaledJacobian(points, quads, orientation);
             double[] flatUv = new double[2 * innerUv.Length];

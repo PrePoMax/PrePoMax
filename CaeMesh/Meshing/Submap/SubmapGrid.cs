@@ -31,6 +31,7 @@ namespace CaeMesh
         private int[][] _quads;
         private int _numOfFoldedQuads;
         private double _minScaledJacobian;
+        private bool _hasStraightLines;
 
 
         // Properties                                                                                                               
@@ -80,12 +81,16 @@ namespace CaeMesh
         /// grid of rectangles.
         /// </summary>
         public double MinScaledJacobian { get { return _minScaledJacobian; } }
+        /// <summary>
+        /// Whether every lattice line of the grid is the straight line between the two boundary nodes it ends on.
+        /// </summary>
+        public bool HasStraightLines { get { return _hasStraightLines; } }
 
 
         // Constructor                                                                                                              
         public SubmapGrid(int[] edgeDirections, int[] edgeCounts, int[] loopNumOfEdges, int[][] logicalCoordinates,
                           double[][] innerUv, double[][] innerXyz, int[][] quads, int numOfFoldedQuads,
-                          double minScaledJacobian)
+                          double minScaledJacobian, bool hasStraightLines)
         {
             _edgeDirections = edgeDirections;
             _edgeCounts = edgeCounts;
@@ -111,6 +116,7 @@ namespace CaeMesh
             _quads = quads;
             _numOfFoldedQuads = numOfFoldedQuads;
             _minScaledJacobian = minScaledJacobian;
+            _hasStraightLines = hasStraightLines;
         }
 
 
