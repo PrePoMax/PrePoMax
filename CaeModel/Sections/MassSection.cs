@@ -22,8 +22,6 @@ namespace CaeModel
     {
         // Variables                                                                                                                
         [PmxKey(0)] private EquationContainer _mass;            //ISerializable
-        [NonSerialized]
-        public string ElementSetName;               // used only for temporary storage while exporting to Calculix .inp
 
 
         // Properties                                                                                                               

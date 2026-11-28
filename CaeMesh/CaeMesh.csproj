@@ -173,6 +173,7 @@
     <Compile Include="Meshing\Gmsh\GmshCapMesher.cs" />
     <Compile Include="Meshing\Gmsh\GmshLensGrid.cs" />
     <Compile Include="Meshing\Gmsh\GmshLensMesher.cs" />
+    <Compile Include="Meshing\Gmsh\GmshSweepSources.cs" />
     <Compile Include="Meshing\Gmsh\GmshMirrorDetector.cs" />
     <Compile Include="Meshing\Gmsh\GmshMirrorNodes.cs" />
     <Compile Include="Meshing\Gmsh\GmshMirrorPlane.cs" />

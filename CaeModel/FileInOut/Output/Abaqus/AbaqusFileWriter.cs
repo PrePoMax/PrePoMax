@@ -10,11 +10,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using CaeModel;
 using CaeMesh;
-using System.IO;
 using FileInOut.Output.Calculix;
 using CaeGlobals;
 using Microsoft.SqlServer.Server;
@@ -45,33 +43,7 @@ namespace FileInOut.Output
                 ConvertKeywordsToAbaqus(copy, ref keywordToChange);
                 keywords[i] = keywordToChange;
             }
-            // Write file
-            StringBuilder sb = new StringBuilder();
-            foreach (var keyword in keywords)
-            {
-                WriteKeywordRecursively(sb, keyword);
-            }
-            // Write to file in multiple steps
-            int step = 10_000_000;
-            int upper;
-            using (StreamWriter sw = new StreamWriter(fileName, false))
-            {
-                for (int i = 0; i < sb.Length; i+=step)
-                {
-                    upper = Math.Min(sb.Length - i, step);
-                    sw.Write(sb.ToString(i, upper));
-                }
-            }
-        }
-        static private void WriteKeywordRecursively(StringBuilder sb, CalculixKeyword keyword)
-        {
-            sb.Append(keyword.GetKeywordString());
-            sb.Append(keyword.GetDataString());
-            //
-            foreach (var childKeyword in keyword.Keywords)
-            {
-                WriteKeywordRecursively(sb, childKeyword);
-            }
+            KeywordDeckWriter.Write(fileName, keywords);
         }
         static private void ConvertKeywordsToAbaqus(FeModel model, ref CalculixKeyword keyword)
         {

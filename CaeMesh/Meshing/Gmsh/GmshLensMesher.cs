@@ -161,6 +161,10 @@ namespace CaeMesh
             }
             return true;
         }
+        public static bool HasNoStraightEdge(LensFace face)
+        {
+            return face.AllEdgeIds.All(edgeId => Gmsh.Model.GetType(1, edgeId) != "Line");
+        }
         /// <summary>
         /// Whether the two-sided face, which carries gmsh ids and whose edges gmsh has meshed, is thin: the fewest
         /// elements its line can carry with the counts a and b the mesh size asks for on its sides is more than

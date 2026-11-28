@@ -248,6 +248,7 @@
     <Compile Include="FileInOut\Output\Calculix\Keywords\Step\Load\CalSTLoad.cs" />
     <Compile Include="FileInOut\Output\Calculix\Keywords\Step\Load\CalMomentLoad.cs" />
     <Compile Include="FileInOut\Output\Calculix\CalculixFileWriter.cs" />
+    <Compile Include="FileInOut\Output\KeywordDeckWriter.cs" />
     <Compile Include="FileInOut\Output\Calculix\ShellOrientationGroup.cs" />
     <Compile Include="FileInOut\Output\Calculix\Keywords\ModelDefinition\Material\CalDensity.cs" />
     <Compile Include="FileInOut\Output\Calculix\Keywords\Step\Load\CalCLoad.cs" />

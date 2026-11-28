@@ -17383,55 +17383,55 @@ namespace PrePoMax
                     namedCyclicSymmetry.CreationData = null;
                     namedCyclicSymmetry.CreationIds = null;
                 }
-                ConvertSelectionBasedMasterSlaveSurfaces(tie, update);
+                ConvertSelectionBasedMasterSlaveSurfaces(tie.Name, tie, update);
             }
             else if (constraint is Joint joint)
             {
-                ConvertSelectionBasedMasterSlaveSurfaces(joint, update);
+                ConvertSelectionBasedMasterSlaveSurfaces(joint.Name, joint, update);
                 _model.UpdateJointAutoValues(joint);
             }
             else throw new NotSupportedException();
         }
-        private void ConvertSelectionBasedMasterSlaveSurfaces(Constraint constraint, bool update)
+        private void ConvertSelectionBasedMasterSlaveSurfaces(string ownerName, IMasterSlaveMultiRegion owner, bool update)
         {
             string name;
             // Master Surface
-            if (constraint.MasterRegionType == RegionTypeEnum.Selection)
+            if (owner.MasterRegionType == RegionTypeEnum.Selection)
             {
-                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, constraint.Name + CaeMesh.Globals.MasterNameSuffix);
-                FeSurface surface = new FeSurface(name, constraint.MasterCreationIds,
-                                                  constraint.MasterCreationData.DeepCopy(true, false));
+                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, ownerName + CaeMesh.Globals.MasterNameSuffix);
+                FeSurface surface = new FeSurface(name, owner.MasterCreationIds,
+                                                  owner.MasterCreationData.DeepCopy(true, false));
                 surface.Internal = true;
-                surface.ParentMasterMultiRegion = constraint;
+                surface.ParentMasterMultiRegion = owner;
                 AddSurface(surface, update);
                 //
-                constraint.MasterRegionName = name;
-                constraint.MasterRegionType = RegionTypeEnum.SurfaceName;
+                owner.MasterRegionName = name;
+                owner.MasterRegionType = RegionTypeEnum.SurfaceName;
             }
             // Clear the creation data if not used
             else
             {
-                constraint.MasterCreationData = null;
-                constraint.MasterCreationIds = null;
+                owner.MasterCreationData = null;
+                owner.MasterCreationIds = null;
             }
             // Slave Surface
-            if (constraint.SlaveRegionType == RegionTypeEnum.Selection)
+            if (owner.SlaveRegionType == RegionTypeEnum.Selection)
             {
-                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, constraint.Name + CaeMesh.Globals.SlaveNameSuffix);
-                FeSurface surface = new FeSurface(name, constraint.SlaveCreationIds,
-                                                  constraint.SlaveCreationData.DeepCopy(true, false));
+                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, ownerName + CaeMesh.Globals.SlaveNameSuffix);
+                FeSurface surface = new FeSurface(name, owner.SlaveCreationIds,
+                                                  owner.SlaveCreationData.DeepCopy(true, false));
                 surface.Internal = true;
-                surface.ParentSlaveMultiRegion = constraint;
+                surface.ParentSlaveMultiRegion = owner;
                 AddSurface(surface, update);
                 //
-                constraint.SlaveRegionName = name;
-                constraint.SlaveRegionType = RegionTypeEnum.SurfaceName;
+                owner.SlaveRegionName = name;
+                owner.SlaveRegionType = RegionTypeEnum.SurfaceName;
             }
             // Clear the creation data if not used
             else
             {
-                constraint.SlaveCreationData = null;
-                constraint.SlaveCreationIds = null;
+                owner.SlaveCreationData = null;
+                owner.SlaveCreationIds = null;
             }
         }
         private void DeleteSelectionBasedConstraintSets(string oldConstraintName)
@@ -17723,7 +17723,7 @@ namespace PrePoMax
             BeginUpdateBatch();
             try
             {
-                ConvertSelectionBasedContactPair(contactPair, update);
+                ConvertSelectionBasedMasterSlaveSurfaces(contactPair.Name, contactPair, update);
                 //
                 _model.ContactPairs.Add(contactPair.Name, contactPair);
                 //
@@ -17750,7 +17750,7 @@ namespace PrePoMax
             try
             {
                 DeleteSelectionBasedContactPairSets(oldContactPairName);
-                ConvertSelectionBasedContactPair(contactPair);
+                ConvertSelectionBasedMasterSlaveSurfaces(contactPair.Name, contactPair, true);
                 //
                 _model.ContactPairs.Replace(oldContactPairName, contactPair.Name, contactPair);
                 //
@@ -17975,47 +17975,6 @@ namespace PrePoMax
             FeModelUpdate(UpdateType.Check | UpdateType.RedrawSymbols);
         }
         //
-        private void ConvertSelectionBasedContactPair(ContactPair contactPair, bool update = true)
-        {
-            // Create a named set and convert a selection to a named set
-            string name;
-            // Master Surface
-            if (contactPair.MasterRegionType == RegionTypeEnum.Selection)
-            {
-                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, contactPair.Name + CaeMesh.Globals.MasterNameSuffix);
-                FeSurface surface = new FeSurface(name, contactPair.MasterCreationIds, contactPair.MasterCreationData.DeepCopy(true, false));
-                surface.Internal = true;
-                surface.ParentMasterMultiRegion = contactPair;
-                AddSurface(surface, update);
-                //
-                contactPair.MasterRegionName = name;
-                contactPair.MasterRegionType = RegionTypeEnum.SurfaceName;
-            }
-            // Clear the creation data if not used
-            else
-            {
-                contactPair.MasterCreationData = null;
-                contactPair.MasterCreationIds = null;
-            }
-            // Slave Surface
-            if (contactPair.SlaveRegionType == RegionTypeEnum.Selection)
-            {
-                name = FeMesh.GetNextFreeSelectionName(_model.Mesh.Surfaces, contactPair.Name + CaeMesh.Globals.SlaveNameSuffix);
-                FeSurface surface = new FeSurface(name, contactPair.SlaveCreationIds, contactPair.SlaveCreationData.DeepCopy(true, false));
-                surface.Internal = true;
-                surface.ParentSlaveMultiRegion = contactPair;
-                AddSurface(surface, update);
-                //
-                contactPair.SlaveRegionName = name;
-                contactPair.SlaveRegionType = RegionTypeEnum.SurfaceName;
-            }
-            // Clear the creation data if not used
-            else
-            {
-                contactPair.SlaveCreationData = null;
-                contactPair.SlaveCreationIds = null;
-            }
-        }
         private void DeleteSelectionBasedContactPairSets(string oldContactPairName)
         {
             // Delete previously created sets

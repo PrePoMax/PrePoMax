@@ -72,24 +72,7 @@ namespace CaeMesh
         // The five-faced transfinite volumes whose three-sided caps are meshed as three blocks of quads, and the
         // volumes by hexahedra between them
         private List<GmshThreeBlockPrism> _threeBlockPrisms = new List<GmshThreeBlockPrism>();
-        // The sweep sources structured by the one definition all meshers follow that the edge graph of the opposite
-        // edges cannot carry: those with a side of several edges, and the three-sided ones, meshed as three blocks
-        private Dictionary<int, TransfiniteFace> _structuredSourceFaces = new Dictionary<int, TransfiniteFace>();
-        // The sweep sources meshed by SubmapMapping, registered by the rules of the structured ones
-        private Dictionary<int, SubmapFace> _submapSourceFaces = new Dictionary<int, SubmapFace>();
-        // The sweep sources meshed by RingMapping, registered by the same rules
-        private Dictionary<int, RingFace> _ringSourceFaces = new Dictionary<int, RingFace>();
-        // The plane sweep sources meshed by GmshLensMesher, registered by the same rules; the submapped sources that
-        // are lens faces as well, whose kind is chosen once the edges carry their first 1D mesh
-        // (_submapLensSourcesChosen) and which are laid as lens faces where their submapped grid is refused; and the
-        // two-sided lens sources that are thin
-        private Dictionary<int, LensFace> _lensSourceFaces = new Dictionary<int, LensFace>();
-        private Dictionary<int, LensFace> _submapLensSourceFaces = new Dictionary<int, LensFace>();
-        private HashSet<int> _thinLensSourceFaceIds = new HashSet<int>();
-        private bool _submapLensSourcesChosen;
-        // The submapped sources whose round holes are raised to SubmapFace.MinNumberOfElementsRound elements at least,
-        // chosen with the lens sources (AreRoundHolesRaised)
-        private HashSet<int> _raisedRoundHoleSourceIds = new HashSet<int>();
+        private GmshSweepSources _sources = new GmshSweepSources();
         // How the three-sided faces are structured, and the corner a polar grid collapses on each of them
         private TransfiniteThreeSidedEnum _transfiniteThreeSided;
         private Dictionary<int, int> _surfaceIdPolarCornerIndex = new Dictionary<int, int>();
@@ -3175,7 +3158,7 @@ namespace CaeMesh
                                                    seamCountFactor * seamNumOfElements : 0);
             }
             // The three-sided structured sources mapped become three blocks of quads around one inner node
-            foreach (var face in _structuredSourceFaces.Values)
+            foreach (var face in _sources.Structured.Values)
             {
                 if (face.NumberOfSides == 3 && !IsPolar(face))
                     GmshThreeBlockMesher.Mesh(face, GetAlgorithmRecombine(sweepMesh) != GmshAlgorithmRecombineEnum.None);
@@ -3186,11 +3169,11 @@ namespace CaeMesh
             string lensReason;
             bool sourceQuads = GetAlgorithmRecombine(sweepMesh) != GmshAlgorithmRecombineEnum.None;
             LensFace fallbackLensFace;
-            foreach (var face in _submapSourceFaces.Values.ToArray())
+            foreach (var face in _sources.Submaps.Values.ToArray())
             {
-                bool keepOrthogonal = !_submapLensSourceFaces.ContainsKey(face.FaceId);
+                bool keepOrthogonal = !_sources.FallbackLenses.ContainsKey(face.FaceId);
                 if (GmshSubmapMesher.Mesh(face, sourceQuads, out reason, keepOrthogonal)) continue;
-                if (!_submapLensSourceFaces.TryGetValue(face.FaceId, out fallbackLensFace))
+                if (!_sources.FallbackLenses.TryGetValue(face.FaceId, out fallbackLensFace))
                     FreeSubmapSource(face.FaceId, reason);
                 else if (GmshLensMesher.Mesh(fallbackLensFace, sourceQuads, out lensReason, _mirrorPlanes)) continue;
                 else
@@ -3199,11 +3182,11 @@ namespace CaeMesh
                     WriteLensFreeMessage(face.FaceId, lensReason);
                 }
             }
-            foreach (var face in _ringSourceFaces.Values.ToArray())
+            foreach (var face in _sources.Rings.Values.ToArray())
             {
                 if (!GmshRingMesher.Mesh(face, sourceQuads, out reason)) FreeRingSource(face.FaceId, reason);
             }
-            foreach (var face in _lensSourceFaces.Values.ToArray())
+            foreach (var face in _sources.Lenses.Values.ToArray())
             {
                 if (!GmshLensMesher.Mesh(face, sourceQuads, out reason, _mirrorPlanes))
                     FreeLensSource(face.FaceId, reason);
@@ -4128,7 +4111,7 @@ namespace CaeMesh
             if (!_isOCC) return null;
             HashSet<int> sourceSurfaceIds = new HashSet<int>(blocks.SelectMany(block => block.SourceSurfaceIds));
             SubmapFace[] submapSources =
-                _submapSourceFaces.Values.Where(face => !_submapLensSourceFaces.ContainsKey(face.FaceId)).ToArray();
+                _sources.Submaps.Values.Where(face => !_sources.FallbackLenses.ContainsKey(face.FaceId)).ToArray();
             TransfiniteFace[] sourceFaces = (_gmshData.TransfiniteFaces ?? new TransfiniteFace[0])
                 .Where(face => face.NumberOfSides == 4 && sourceSurfaceIds.Contains(face.FaceId) &&
                                _transfiniteSurfaceIds.Contains(face.FaceId)).ToArray();
@@ -5059,10 +5042,10 @@ namespace CaeMesh
         {
             int count;
             // The edges of a ring source that is not paired aim at their shares of the total of its other loop
-            Dictionary<int, int> ringTargetCounts = GetRingTargetCounts(_ringSourceFaces.Values,
+            Dictionary<int, int> ringTargetCounts = GetRingTargetCounts(_sources.Rings.Values,
                                                                         SweepWallTopology.GetElementCount);
             // The edges of a round hole of a submapped source aim at the count of the ring around it
-            Dictionary<int, int> ringedHoleTargetCounts = GetRingedHoleTargetCounts(_submapSourceFaces.Values,
+            Dictionary<int, int> ringedHoleTargetCounts = GetRingedHoleTargetCounts(_sources.Submaps.Values,
                                                                                     SweepWallTopology.GetElementCount);
             int ringTargetCount;
             int pieceTargetCount;
@@ -5182,7 +5165,7 @@ namespace CaeMesh
                                          new int[] { edgeIds[others[0]] }, new int[] { edgeIds[others[1]] }, surfaceId);
                 }
             }
-            foreach (var face in _structuredSourceFaces.Values)
+            foreach (var face in _sources.Structured.Values)
             {
                 if (face.NumberOfSides == 4)
                 {
@@ -5205,7 +5188,7 @@ namespace CaeMesh
             // sides that face each other kept apart, two elements under a full-quad recombination, whose halved counts
             // keep one then; every hole closes on its own and has room with a cell on each side. Given up, a submapped
             // source is meshed free, never refused
-            foreach (var face in _submapSourceFaces.Values)
+            foreach (var face in _sources.Submaps.Values)
             {
                 int bound = _fullQuadSourceIds.Contains(face.FaceId) ? 2 : 1;
                 SubmapFace[] loops = face.Loops;
@@ -5225,7 +5208,7 @@ namespace CaeMesh
                         problem.AddEvenSum(loopName + " around", IntervalRowTierEnum.Structured, loops[l].EdgeIds, 4);
                         problem.AddEvenSum(loopName + " even on a side", IntervalRowTierEnum.Preferred,
                                            loops[l].EdgeIds, 8);
-                        if (_raisedRoundHoleSourceIds.Contains(face.FaceId))
+                        if (_sources.HasRaisedRoundHole(face.FaceId))
                             problem.AddAtLeastSum(loopName + " least around", IntervalRowTierEnum.Structured,
                                                   loops[l].EdgeIds, SubmapFace.MinNumberOfElementsRound, face.FaceId);
                         continue;
@@ -5270,7 +5253,7 @@ namespace CaeMesh
             }
             // The ring sources: every pair of edges that face each other, or the two loops, carry as many elements. Given
             // up, a ring source is meshed free, never refused
-            foreach (var face in _ringSourceFaces.Values)
+            foreach (var face in _sources.Rings.Values)
             {
                 foreach (var pair in face.GetSidePairs())
                 {
@@ -5283,7 +5266,7 @@ namespace CaeMesh
             // The lens sources: an even total round the loop, and LensFace.MinNumberOfElementsPerSide on each side of a
             // two-sided one or LensFace.MinNumberOfElementsInLoop round another; a thin one asks for equal sides at the
             // weakest tier. Given up, a lens source is meshed free, never refused
-            foreach (var face in _lensSourceFaces.Values)
+            foreach (var face in _sources.Lenses.Values)
             {
                 problem.AddEvenSum(_lensRowPrefix + face.FaceId + " around", IntervalRowTierEnum.Structured,
                                    face.AllEdgeIds);
@@ -5295,7 +5278,7 @@ namespace CaeMesh
                     problem.AddAtLeastSum(_lensRowPrefix + face.FaceId + " side from Edge " + sides[k][0],
                                           IntervalRowTierEnum.Structured, sides[k], LensFace.MinNumberOfElementsPerSide,
                                           face.FaceId);
-                if (sides.Length == 2 && _thinLensSourceFaceIds.Contains(face.FaceId))
+                if (sides.Length == 2 && _sources.IsThinLens(face.FaceId))
                     problem.AddEqualSums(_lensRowPrefix + face.FaceId + " thin sides", IntervalRowTierEnum.Preferred,
                                          sides[0], sides[1], face.FaceId);
             }
@@ -5406,12 +5389,12 @@ namespace CaeMesh
             _mirrorPlanes = GetMirrorPlanes(counts, counts, pinnedEdgeIds);
             IEnumerable<int> structuredSourceIds =
                 _sweepBlocks.SelectMany(block => block.SourceSurfaceIds).Where(_transfiniteSurfaceIds.Contains)
-                            .Concat(_structuredSourceFaces.Keys).Concat(_submapSourceFaces.Keys)
-                            .Concat(_ringSourceFaces.Keys).Distinct().OrderBy(id => id).ToArray();
+                            .Concat(_sources.Structured.Keys).Concat(_sources.Submaps.Keys)
+                            .Concat(_sources.Rings.Keys).Distinct().OrderBy(id => id).ToArray();
             MirrorCountRows rows = GetMirrorCountRows(edgeIds, edgeId => problem.EdgeIdTarget[edgeId],
                                                       structuredSourceIds,
-                                                      _lensSourceFaces.Keys.OrderBy(id => id).ToArray(),
-                                                      _submapSourceFaces.Values);
+                                                      _sources.Lenses.Keys.OrderBy(id => id).ToArray(),
+                                                      _sources.Submaps.Values);
             if (rows == null) return;
             foreach (var entry in rows.PieceTargets) pieceTargetCounts[entry.Key] = entry.Value;
             for (int i = 0; i < rows.EqualSides.Count; i++)
@@ -6015,7 +5998,7 @@ namespace CaeMesh
             // A four-sided source with a side of several edges is given its corners, and a polar three-sided one its
             // corners from the collapsed one; a mapped three-sided one is meshed free first and its three blocks replace
             // that mesh
-            foreach (var face in _structuredSourceFaces.Values)
+            foreach (var face in _sources.Structured.Values)
             {
                 if (face.NumberOfSides == 4)
                     Gmsh.Model.Mesh.SetTransfiniteSurface(face.FaceId, "AlternateLeft", face.CornerNodeIds);
@@ -6148,14 +6131,7 @@ namespace CaeMesh
         private void SetStructuredSweepSources(Dictionary<int, GmshSurface> surfaceIdSurface,
                                                HashSet<int> surfaceIdsWithInternalCurves)
         {
-            _structuredSourceFaces.Clear();
-            _submapSourceFaces.Clear();
-            _ringSourceFaces.Clear();
-            _lensSourceFaces.Clear();
-            _submapLensSourceFaces.Clear();
-            _thinLensSourceFaceIds.Clear();
-            _submapLensSourcesChosen = false;
-            _raisedRoundHoleSourceIds.Clear();
+            _sources = new GmshSweepSources();
             Dictionary<int, TransfiniteFace> faces = new Dictionary<int, TransfiniteFace>();
             if (_gmshData.TransfiniteFaces != null)
             {
@@ -6188,37 +6164,19 @@ namespace CaeMesh
                     _freeMeshedSurfaceIds.Contains(surfaceId) || _tetrahedralSurfaceIds.Contains(surfaceId) ||
                     !surfaceIdSurface.TryGetValue(surfaceId, out surface)) continue;
                 //
-                bool structured = faces.TryGetValue(surfaceId, out structuredFace) &&
-                                  !surfaceIdsWithInternalCurves.Contains(surfaceId);
-                surface.Transfinite = structured && structuredFace.NumberOfSides == 4 && surface.FourSided &&
-                                      structuredFace.SideEdgeIds.All(side => side.Length == 1);
-                if (structured && !surface.Transfinite) _structuredSourceFaces[surfaceId] = structuredFace;
-                // A submapped source by the same rules, meshed free first like a three-sided one
-                SubmapFace submapFace;
-                if (!structured && submapFaces.TryGetValue(surfaceId, out submapFace) &&
-                    !surfaceIdsWithInternalCurves.Contains(surfaceId)) _submapSourceFaces[surfaceId] = submapFace;
-                // A ring source likewise, and a source that is both a ring and submapped is a ring when its wall is thin
-                RingFace ringFace;
-                if (!structured && ringFaces.TryGetValue(surfaceId, out ringFace) &&
-                    !surfaceIdsWithInternalCurves.Contains(surfaceId) &&
-                    (!_submapSourceFaces.ContainsKey(surfaceId) || IsThinRing(ringFace)))
+                if (surfaceIdsWithInternalCurves.Contains(surfaceId))
                 {
-                    _submapSourceFaces.Remove(surfaceId);
-                    _ringSourceFaces[surfaceId] = ringFace;
-                }
-                // A plane lens source likewise; a submapped one is a lens source when it has no straight edge, and the
-                // kind of the better grid otherwise
-                LensFace lensFace;
-                if (structured || _ringSourceFaces.ContainsKey(surfaceId) ||
-                    !lensFaces.TryGetValue(surfaceId, out lensFace) || surfaceIdsWithInternalCurves.Contains(surfaceId))
+                    surface.Transfinite = false;
                     continue;
-                if (_submapSourceFaces.ContainsKey(surfaceId) && !HasNoStraightEdge(lensFace))
-                    _submapLensSourceFaces[surfaceId] = lensFace;
-                else
-                {
-                    _submapSourceFaces.Remove(surfaceId);
-                    _lensSourceFaces[surfaceId] = lensFace;
                 }
+                SubmapFace submapFace;
+                RingFace ringFace;
+                LensFace lensFace;
+                faces.TryGetValue(surfaceId, out structuredFace);
+                submapFaces.TryGetValue(surfaceId, out submapFace);
+                ringFaces.TryGetValue(surfaceId, out ringFace);
+                lensFaces.TryGetValue(surfaceId, out lensFace);
+                _sources.Register(surface, structuredFace, submapFace, ringFace, lensFace, IsThinRing);
             }
         }
         /// <summary>
@@ -6238,21 +6196,18 @@ namespace CaeMesh
         /// </summary>
         private void ChooseSubmapLensSweepSources()
         {
-            if (_submapLensSourcesChosen) return;
-            _submapLensSourcesChosen = true;
+            if (!_sources.BeginEdgeTrials()) return;
             ChooseRaisedRoundHoleSweepSources();
-            if (_lensSourceFaces.Count == 0 && _submapLensSourceFaces.Count == 0) return;
+            if (_sources.Lenses.Count == 0 && _sources.FallbackLenses.Count == 0) return;
             //
             Dictionary<int, int> naturalCounts = new Dictionary<int, int>();
-            foreach (var edgeId in _lensSourceFaces.Values.Concat(_submapLensSourceFaces.Values)
+            foreach (var edgeId in _sources.Lenses.Values.Concat(_sources.FallbackLenses.Values)
                                                    .SelectMany(face => face.AllEdgeIds)
-                                                   .Concat(_submapLensSourceFaces.Keys.SelectMany(faceId =>
-                                                       _submapSourceFaces[faceId].AllEdgeIds)).Distinct())
+                                                   .Concat(_sources.FallbackLenses.Keys.SelectMany(faceId =>
+                                                       _sources.Submaps[faceId].AllEdgeIds)).Distinct())
                 naturalCounts[edgeId] = SweepWallTopology.GetElementCount(edgeId);
-            _thinLensSourceFaceIds.UnionWith(_lensSourceFaces.Values.Concat(_submapLensSourceFaces.Values)
-                                                             .Where(face => GmshLensMesher.IsThin(face, naturalCounts))
-                                                             .Select(face => face.FaceId));
-            if (_submapLensSourceFaces.Count == 0) return;
+            _sources.MarkThinLenses(naturalCounts);
+            if (_sources.FallbackLenses.Count == 0) return;
             //
             HashSet<int> pinnedEdgeIds = new HashSet<int>(naturalCounts.Keys.Where(edgeId => IsFixedEdgeCount(edgeId)));
             Dictionary<int, int> maxSizeCounts = GetMaxSizeCounts(naturalCounts);
@@ -6263,16 +6218,14 @@ namespace CaeMesh
                 return length;
             };
             HashSet<int> trialEdgeIds = new HashSet<int>();
-            foreach (var surfaceId in _submapLensSourceFaces.Keys.OrderBy(id => id).ToArray())
+            foreach (var surfaceId in _sources.FallbackLenses.Keys.OrderBy(id => id).ToArray())
             {
-                LensFace lensFace = _submapLensSourceFaces[surfaceId];
-                if (!IsBetterAsLensFace(_submapSourceFaces[surfaceId], lensFace,
-                                        _thinLensSourceFaceIds.Contains(surfaceId), naturalCounts, pinnedEdgeIds,
+                LensFace lensFace = _sources.FallbackLenses[surfaceId];
+                if (!IsBetterAsLensFace(_sources.Submaps[surfaceId], lensFace,
+                                        _sources.IsThinLens(surfaceId), naturalCounts, pinnedEdgeIds,
                                         maxSizeCounts, _fullQuadSourceIds.Contains(surfaceId), getEdgeLength,
                                         trialEdgeIds)) continue;
-                _submapLensSourceFaces.Remove(surfaceId);
-                _submapSourceFaces.Remove(surfaceId);
-                _lensSourceFaces[surfaceId] = lensFace;
+                _sources.TryUseLens(surfaceId);
             }
             MeshTrialEdges(trialEdgeIds.ToDictionary(edgeId => edgeId, edgeId => naturalCounts[edgeId]),
                            new HashSet<int>());
@@ -6284,7 +6237,7 @@ namespace CaeMesh
         /// </summary>
         private void ChooseRaisedRoundHoleSweepSources()
         {
-            SubmapFace[] faces = _submapSourceFaces.Values.Where(face => face.HasHoles &&
+            SubmapFace[] faces = _sources.Submaps.Values.Where(face => face.HasHoles &&
                                                                          face.Holes.Any(hole => hole.IsRound))
                                                           .OrderBy(face => face.FaceId).ToArray();
             if (faces.Length == 0) return;
@@ -6305,7 +6258,7 @@ namespace CaeMesh
             {
                 if (AreRoundHolesRaised(face, naturalCounts, pinnedEdgeIds, maxSizeCounts,
                                         _fullQuadSourceIds.Contains(face.FaceId), getEdgeLength, trialEdgeIds))
-                    _raisedRoundHoleSourceIds.Add(face.FaceId);
+                    _sources.MarkRaisedRoundHole(face.FaceId);
             }
             MeshTrialEdges(trialEdgeIds.ToDictionary(edgeId => edgeId, edgeId => naturalCounts[edgeId]),
                            new HashSet<int>());
@@ -6325,7 +6278,7 @@ namespace CaeMesh
         {
             Gmsh.Model.Mesh.RemoveConstraints(new Tuple<int, int>[] { new Tuple<int, int>(2, surfaceId) });
             _transfiniteSurfaceIds.Remove(surfaceId);
-            _structuredSourceFaces.Remove(surfaceId);
+            _sources.RemoveStructured(surfaceId);
             if (_sweepRecombine) Gmsh.Model.Mesh.SetRecombine(2, surfaceId);
             _writeOutput?.Invoke(NameGmshEntities(message));
         }
@@ -6334,7 +6287,7 @@ namespace CaeMesh
         /// </summary>
         private void FreeSubmapSource(int surfaceId, string reason)
         {
-            _submapSourceFaces.Remove(surfaceId);
+            _sources.RemoveSubmap(surfaceId);
             WriteSubmapFreeMessage(surfaceId, reason);
         }
         /// <summary>
@@ -6342,7 +6295,7 @@ namespace CaeMesh
         /// </summary>
         private void FreeRingSource(int surfaceId, string reason)
         {
-            _ringSourceFaces.Remove(surfaceId);
+            _sources.RemoveRing(surfaceId);
             WriteRingFreeMessage(surfaceId, reason);
         }
         /// <summary>
@@ -6350,7 +6303,7 @@ namespace CaeMesh
         /// </summary>
         private void FreeLensSource(int surfaceId, string reason)
         {
-            _lensSourceFaces.Remove(surfaceId);
+            _sources.RemoveLens(surfaceId);
             WriteLensFreeMessage(surfaceId, reason);
         }
         /// <summary>
@@ -6441,7 +6394,7 @@ namespace CaeMesh
             Func<int[], int> sideCount = side => side.Sum(edgeId => _gmshData.EdgeIdNumElements.TryGetValue(edgeId, out count) ?
                                                                     count : SweepWallTopology.GetElementCount(edgeId));
             List<string> lines = new List<string>();
-            foreach (var face in _structuredSourceFaces.Values.OrderBy(face => face.FaceId).ToArray())
+            foreach (var face in _sources.Structured.Values.OrderBy(face => face.FaceId).ToArray())
             {
                 int[] counts = face.SideEdgeIds.Select(sideCount).ToArray();
                 TransfiniteSidePair polarPair = IsPolar(face) ? face.GetPolarSidePair(GetPolarCornerIndex(face)) : null;
@@ -6460,7 +6413,7 @@ namespace CaeMesh
             // cells between them or a hole without room or place, or cannot split an edge that turns or a round hole, is
             // meshed free, whoever set its counts
             string reason;
-            foreach (var face in _submapSourceFaces.Values.OrderBy(face => face.FaceId).ToArray())
+            foreach (var face in _sources.Submaps.Values.OrderBy(face => face.FaceId).ToArray())
             {
                 Dictionary<int, int> edgeIdCount = new Dictionary<int, int>();
                 foreach (var edgeId in face.AllEdgeIds) edgeIdCount[edgeId] = sideCount(new int[] { edgeId });
@@ -6483,17 +6436,10 @@ namespace CaeMesh
                     else reason = GmshSubmapMesher.NameLoopEdges(face, reason);
                 }
                 // One that is a lens face as well is a lens source on the counts it has, checked below
-                LensFace lensFace;
-                if (_submapLensSourceFaces.TryGetValue(face.FaceId, out lensFace))
-                {
-                    _submapSourceFaces.Remove(face.FaceId);
-                    _submapLensSourceFaces.Remove(face.FaceId);
-                    _lensSourceFaces[face.FaceId] = lensFace;
-                }
-                else FreeSubmapSource(face.FaceId, reason);
+                if (!_sources.TryUseLens(face.FaceId)) FreeSubmapSource(face.FaceId, reason);
             }
             // A ring source whose loops, or edges that face each other, the walls leave unequal is meshed free as well
-            foreach (var face in _ringSourceFaces.Values.OrderBy(face => face.FaceId).ToArray())
+            foreach (var face in _sources.Rings.Values.OrderBy(face => face.FaceId).ToArray())
             {
                 Dictionary<int, int> edgeIdCount = new Dictionary<int, int>();
                 foreach (var edgeId in face.AllEdgeIds) edgeIdCount[edgeId] = sideCount(new int[] { edgeId });
@@ -6501,7 +6447,7 @@ namespace CaeMesh
                 if (reason != null) FreeRingSource(face.FaceId, reason);
             }
             // A lens source whose total the walls leave odd, or a side or the loop too short, likewise
-            foreach (var face in _lensSourceFaces.Values.OrderBy(face => face.FaceId).ToArray())
+            foreach (var face in _sources.Lenses.Values.OrderBy(face => face.FaceId).ToArray())
             {
                 Dictionary<int, int> edgeIdCount = face.AllEdgeIds.Distinct()
                                                        .ToDictionary(edgeId => edgeId,
@@ -6583,7 +6529,7 @@ namespace CaeMesh
             // The submapping lays its grid between straight sides joined by corners, sharp or rounded. A lens face with
             // no straight edge - a disc of arcs, an ellipse, a lens of two arcs - has none, and the counts the
             // submapping would balance for it are not those of its lens grid, so it is a lens face only
-            HashSet<int> roundLensFaceIds = new HashSet<int>(lensFaces.Where(HasNoStraightEdge)
+            HashSet<int> roundLensFaceIds = new HashSet<int>(lensFaces.Where(GmshLensMesher.HasNoStraightEdge)
                                                                       .Select(face => face.FaceId));
             submapFaces = submapFaces.Where(face => !roundLensFaceIds.Contains(face.FaceId)).ToArray();
             // A face both submapped and a ring is meshed as one of them
@@ -7892,8 +7838,7 @@ namespace CaeMesh
         {
             return !wallSurfaceIds.Contains(surfaceId) && !targetSurfaceIds.Contains(surfaceId) &&
                    !_quadWildSourceIds.Contains(surfaceId) && !_transfiniteSurfaceIds.Contains(surfaceId) &&
-                   !_structuredSourceFaces.ContainsKey(surfaceId) && !_submapSourceFaces.ContainsKey(surfaceId) &&
-                   !_ringSourceFaces.ContainsKey(surfaceId) && !_lensSourceFaces.ContainsKey(surfaceId);
+                   !_sources.Contains(surfaceId);
         }
         private void WriteSubmapFreeMessage(int surfaceId, string reason)
         {
@@ -7910,10 +7855,6 @@ namespace CaeMesh
         private void WriteCapFreeMessage(int surfaceId, string reason)
         {
             _writeOutput?.Invoke(NameGmshEntities("Cap mapping: Surface " + surfaceId + " is meshed free - " + reason + "."));
-        }
-        private static bool HasNoStraightEdge(LensFace face)
-        {
-            return face.AllEdgeIds.All(edgeId => Gmsh.Model.GetType(1, edgeId) != "Line");
         }
         private void WriteLensFreeMessage(int surfaceId, string reason)
         {

@@ -49,23 +49,7 @@ namespace FileInOut.Output
             List<CalculixKeyword> keywords = GetAllKeywords(copy, convertPyramidsTo, deformations);
             // After the overrides, which are matched against the ASCII keywords shown in the keyword editor
             if (binaryResultsFile) SetBinaryResultsFile(keywords);
-            // Write file
-            StringBuilder sb = new StringBuilder();
-            foreach (var keyword in keywords)
-            {
-                WriteKeywordRecursively(sb, keyword);
-            }
-            // Write to file in multiple steps
-            int step = 10_000_000;
-            int upper;
-            using (StreamWriter sw = new StreamWriter(fileName, false))
-            {
-                for (int i = 0; i < sb.Length; i+=step)
-                {
-                    upper = Math.Min(sb.Length - i, step);
-                    sw.Write(sb.ToString(i, upper));
-                }
-            }
+            KeywordDeckWriter.Write(fileName, keywords, ShortenLongNames);
         }
         static private void SetBinaryResultsFile(List<CalculixKeyword> keywords)
         {
@@ -103,19 +87,6 @@ namespace FileInOut.Output
                 CollectFieldOutputKeywords(keyword.Keywords, fieldOutputs);
             }
         }
-        static private void Clean(FeModel model)
-        {
-            foreach (var entry in model.Sections)
-            {
-                if (entry.Value is MassSection ms)
-                {
-                    if (ms is PointMassSection pms)
-                    {
-                        pms.ElementSetName = null;
-                    }
-                }
-            }
-        }
         static public void WriteMaterials(string fileName, FeModel model, string[] materialNames)
         {
             List<CalculixKeyword> keywords = new List<CalculixKeyword>();
@@ -127,13 +98,7 @@ namespace FileInOut.Output
             title = new CalTitle("Materials", "");
             keywords.Add(title);
             AppendMaterials(model, title, null, materialNames);
-            // Write file
-            StringBuilder sb = new StringBuilder();
-            foreach (var keyword in keywords)
-            {
-                WriteKeywordRecursively(sb, keyword);
-            }
-            File.WriteAllText(fileName, sb.ToString());
+            KeywordDeckWriter.Write(fileName, keywords, ShortenLongNames);
         }
         //
         static public List<CalculixKeyword> GetAllKeywords(FeModel model, ConvertPyramidsToEnum convertPyramidsTo,
@@ -203,7 +168,8 @@ namespace FileInOut.Output
                                                ref additionalSectionData, ref additionalBoundaryConditions,
                                                ref equationParameters);
                 // Prepare mass sections
-                GetMassSections(model, referencePoints, ref maxNodeId, ref maxElementId, ref additionalNodes,
+                Dictionary<MassSection, string> massElementSetNames = new Dictionary<MassSection, string>();
+                GetMassSections(model, referencePoints, massElementSetNames, ref maxNodeId, ref maxElementId, ref additionalNodes,
                                 ref additionalNodeSets, ref additionalElementKeywords, ref additionalElementSetNames,
                                 ref additionalSectionData, ref additionalBoundaryConditions, ref equationParameters);
                 // Prepare point springs
@@ -301,7 +267,7 @@ namespace FileInOut.Output
                 // Steps
                 title = new CalTitle("Steps", "");
                 keywords.Add(title);
-                AppendSteps(model, additionalBoundaryConditions, referencePoints, title);
+                AppendSteps(model, additionalBoundaryConditions, referencePoints, massElementSetNames, title);
                 //
                 return keywords;
             }
@@ -315,8 +281,6 @@ namespace FileInOut.Output
                 model.Mesh.Surfaces = originalSurfaces;
                 //
                 foreach (var entry in replacedElements) model.Mesh.Elements[entry.Key] = entry.Value;
-                //
-                Clean(model);
             }
         }
         static private void GetPretensionLoads(FeModel model, out OrderedDictionary<string, List<PreTensionLoad>> preTensionLoads)
@@ -636,6 +600,7 @@ namespace FileInOut.Output
             return maxNodeId;
         }
         static private void GetMassSections(FeModel model, Dictionary<string, CalReferencePoint> referencePoints,
+                                            Dictionary<MassSection, string> massElementSetNames,
                                             ref int maxNodeId, ref int maxElementId, ref List<FeNode> additionalNodes,
                                             ref List<FeNodeSet> additionalNodeSets,
                                             ref List<CalElement> additionalElementKeywords,
@@ -705,7 +670,7 @@ namespace FileInOut.Output
                             model.Mesh.ElementSets.Add(elementSet.Name, elementSet);
                             additionalElementSetNames.Add(elementSet.Name);
                             //
-                            pms.ElementSetName = name;  // temporary storage
+                            massElementSetNames.Add(pms, name);
                         }
                         else if (pms.RegionType == RegionTypeEnum.ReferencePointName)
                         {
@@ -737,7 +702,7 @@ namespace FileInOut.Output
                             massSectionData = new MassSectionData("NID_" + nodeId, name, nodalMass);
                             additionalSectionData.Add(massSectionData);
                             // Add elements in sets
-                            pms.ElementSetName = name;  // temporary storage
+                            massElementSetNames.Add(pms, name);
                         }
                         else throw new NotSupportedException();
                     }
@@ -780,7 +745,7 @@ namespace FileInOut.Output
                         model.Mesh.ElementSets.Add(elementSet.Name, elementSet);
                         additionalElementSetNames.Add(elementSet.Name);
                         //
-                        dms.ElementSetName = name;  // temporary storage
+                        massElementSetNames.Add(dms, name);
                     }
                     else throw new NotSupportedException();
                 }
@@ -1781,7 +1746,10 @@ namespace FileInOut.Output
         static private string GetKeywordsTextWithoutComments(CalculixKeyword parent)
         {
             StringBuilder sb = new StringBuilder();
-            foreach (var keyword in parent.Keywords) WriteKeywordRecursively(sb, keyword);
+            using (StringWriter writer = new StringWriter(sb))
+            {
+                KeywordDeckWriter.WriteKeywords(writer, parent.Keywords, ShortenLongNames);
+            }
             //
             StringBuilder withoutComments = new StringBuilder();
             foreach (var line in sb.ToString().Split(new string[] { Environment.NewLine }, StringSplitOptions.None))
@@ -1789,16 +1757,6 @@ namespace FileInOut.Output
                 if (!line.StartsWith("**")) withoutComments.AppendLine(line);
             }
             return withoutComments.ToString();
-        }
-        static private void WriteKeywordRecursively(StringBuilder sb, CalculixKeyword keyword)
-        {
-            sb.Append(ShortenLongNames(keyword.GetKeywordString()));
-            sb.Append(ShortenLongNames(keyword.GetDataString()));
-            //
-            foreach (var childKeyword in keyword.Keywords)
-            {
-                WriteKeywordRecursively(sb, childKeyword);
-            }
         }
         static private string ShortenLongNames(string text)
         {
@@ -2902,7 +2860,8 @@ namespace FileInOut.Output
         }
         //
         static private void AppendSteps(FeModel model, List<BoundaryCondition> additionalBoundaryConditions,
-                                        Dictionary<string, CalReferencePoint> referencePoints, CalculixKeyword parent)
+                                        Dictionary<string, CalReferencePoint> referencePoints,
+                                        Dictionary<MassSection, string> massElementSetNames, CalculixKeyword parent)
         {
             CalTitle title;
             HashSet<Type> loadTypes = model.StepCollection.GetAllLoadTypes();
@@ -3114,7 +3073,7 @@ namespace FileInOut.Output
                 foreach (var loadEntry in step.Loads)
                 {
                     if (step.Active && loadEntry.Value.Active) AppendLoad(model, step, loadEntry.Value, referencePoints,
-                                                                          title);
+                                                                          massElementSetNames, title);
                     else title.AddKeyword(new CalDeactivated(loadEntry.Value.Name));
                 }
                 // Defined fields title
@@ -3239,19 +3198,20 @@ namespace FileInOut.Output
             if (calAdditionalBoundaryConditions.GetDataString().Length > 0) parent.AddKeyword(calAdditionalBoundaryConditions);
         }
         static private void AppendLoad(FeModel model, Step step, Load load, Dictionary<string, CalReferencePoint> referencePoints,
-                                       CalculixKeyword parent)
+                                       Dictionary<MassSection, string> massElementSetNames, CalculixKeyword parent)
         {
             ComplexLoadTypeEnum complexLoadType;
             if (load.Complex) complexLoadType = ComplexLoadTypeEnum.Real;
             else complexLoadType = ComplexLoadTypeEnum.None;
             //
-            AppendLoad(model, load, referencePoints, complexLoadType, parent);
+            AppendLoad(model, load, referencePoints, massElementSetNames, complexLoadType, parent);
             // Load case=2 - Imaginary component
             if (step is SteadyStateDynamicsStep && load.Complex && load.PhaseDeg.Value != 0)
-                AppendLoad(model, load, referencePoints, ComplexLoadTypeEnum.Imaginary, parent);
+                AppendLoad(model, load, referencePoints, massElementSetNames, ComplexLoadTypeEnum.Imaginary, parent);
         }
         static private void AppendLoad(FeModel model, Load load, Dictionary<string, CalReferencePoint> referencePoints,
-                                       ComplexLoadTypeEnum complexLoadType, CalculixKeyword parent)
+                                       Dictionary<MassSection, string> massElementSetNames, ComplexLoadTypeEnum complexLoadType,
+                                       CalculixKeyword parent)
         {
             if (model.Mesh != null)
             {
@@ -3310,7 +3270,9 @@ namespace FileInOut.Output
                     if (gl.RegionType == RegionTypeEnum.MassSection)
                     {
                         massSection = (MassSection)model.Sections[glClone.RegionName];
-                        glClone.RegionName = massSection.ElementSetName;
+                        string elementSetName;
+                        massElementSetNames.TryGetValue(massSection, out elementSetName);
+                        glClone.RegionName = elementSetName;
                     }
                     //
                     CalGravityLoad gLoad = new CalGravityLoad(glClone, complexLoadType);
@@ -3323,7 +3285,9 @@ namespace FileInOut.Output
                     if (cfl.RegionType == RegionTypeEnum.MassSection)
                     {
                         massSection = (MassSection)model.Sections[cflClone.RegionName];
-                        cflClone.RegionName = massSection.ElementSetName;
+                        string elementSetName;
+                        massElementSetNames.TryGetValue(massSection, out elementSetName);
+                        cflClone.RegionName = elementSetName;
                     }
                     //
                     CalCentrifLoad cLoad = new CalCentrifLoad(cflClone, complexLoadType);
